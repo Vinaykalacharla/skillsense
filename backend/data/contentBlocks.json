@@ -1,0 +1,144 @@
+﻿{
+  "hero": {
+    "badge_text": "Placement intelligence",
+    "title": "SkillSense AI is the smart way to verify every candidate",
+    "highlight": "Evidence-backed talent",
+    "subtitle": "Adaptive AI interviews, recruiter pipelines, and university analytics in one platform.",
+    "stats": [
+      { "value": "3K+", "label": "Verified students" },
+      { "value": "120+", "label": "Partner universities" },
+      { "value": "95%", "label": "Interview readiness" }
+    ]
+  },
+  "features": [
+    {
+      "icon": "Layers",
+      "title": "Unified student journeys",
+      "description": "Profile verification, recommendations, score reports, and placement readiness all in one place.",
+      "gradient": "from-primary to-cyan-500"
+    },
+    {
+      "icon": "Mic",
+      "title": "Adaptive AI interviews",
+      "description": "Run interview simulations that change in difficulty as the candidate responds.",
+      "gradient": "from-accent to-primary"
+    },
+    {
+      "icon": "FileCheck",
+      "title": "Resume and profile validation",
+      "description": "Match claims with uploaded evidence and generate recruiter-ready scorecards.",
+      "gradient": "from-cyan-500 to-emerald-400"
+    },
+    {
+      "icon": "Code",
+      "title": "Code analysis signals",
+      "description": "Turn repositories and submissions into readable engineering feedback and skill summaries.",
+      "gradient": "from-primary to-indigo-500"
+    },
+    {
+      "icon": "Video",
+      "title": "Recruiter workflow automation",
+      "description": "Schedule interviews, review pipelines, and coordinate candidate updates from one dashboard.",
+      "gradient": "from-amber-400 to-orange-500"
+    },
+    {
+      "icon": "TrendingUp",
+      "title": "University readiness analytics",
+      "description": "Track cohorts, surface weak skill clusters, and intervene before placement cycles begin.",
+      "gradient": "from-emerald-400 to-teal-500"
+    }
+  ],
+  "data_types": [
+    { "icon": "ShieldCheck", "label": "Verified evidence", "color": "text-primary" },
+    { "icon": "Sparkles", "label": "AI scoring", "color": "text-accent" },
+    { "icon": "Code", "label": "Project reviews", "color": "text-cyan-400" },
+    { "icon": "FileText", "label": "Resume insights", "color": "text-amber-400" }
+  ],
+  "user_types": [
+    {
+      "icon": "GraduationCap",
+      "title": "Students",
+      "description": "Auto-build a skill passport and get AI interview coaching.",
+      "features": ["AI interviews", "Score transparency", "Resume ready"],
+      "cta": "Join as student",
+      "href": "/student/start",
+      "gradient": "from-primary to-accent"
+    },
+    {
+      "icon": "Briefcase",
+      "title": "Recruiters",
+      "description": "Shortlist faster with proof-backed candidate signals instead of guesswork.",
+      "features": ["Hiring pipelines", "Resume downloads", "Interview scheduling"],
+      "cta": "Open recruiter desk",
+      "href": "/recruiter/dashboard",
+      "gradient": "from-cyan-500 to-primary"
+    },
+    {
+      "icon": "Building2",
+      "title": "Universities",
+      "description": "Monitor batch readiness, upload cohorts, and trigger focused interventions.",
+      "features": ["Batch analytics", "Drive planning", "Placement reporting"],
+      "cta": "View university suite",
+      "href": "/university/dashboard",
+      "gradient": "from-emerald-400 to-teal-500"
+    }
+  ],
+  "testimonials": [
+    {
+      "name": "Asha Patel",
+      "role": "Full-stack student",
+      "company": "ABC University",
+      "image": "https://via.placeholder.com/48",
+      "content": "SkillSense AI highlighted the exact areas I needed to improve before interviewing.",
+      "rating": 5
+    },
+    {
+      "name": "Daniel Brooks",
+      "role": "Campus recruiter",
+      "company": "Northwind Tech",
+      "image": "https://via.placeholder.com/48",
+      "content": "We moved from resume screening to verified signals and cut our shortlist time dramatically.",
+      "rating": 5
+    },
+    {
+      "name": "Mira Singh",
+      "role": "Placement lead",
+      "company": "Cityline Institute",
+      "image": "https://via.placeholder.com/48",
+      "content": "The batch dashboard made it obvious where students were stuck and what interventions were needed.",
+      "rating": 5
+    }
+  ],
+  "about": {
+    "title": "Why SkillSense",
+    "subtitle": "We combine data, AI coaching, and recruiter workflows.",
+    "items": [
+      {
+        "icon": "Users",
+        "title": "One shared platform",
+        "description": "Students, recruiters, and universities operate from the same source of truth."
+      },
+      {
+        "icon": "Target",
+        "title": "Precision interventions",
+        "description": "Surface weak skills early and direct effort where it has measurable impact."
+      },
+      {
+        "icon": "Award",
+        "title": "Proof-backed credibility",
+        "description": "Move beyond self-reported skills with evidence, assessments, and verified outcomes."
+      },
+      {
+        "icon": "TrendingUp",
+        "title": "Better placement outcomes",
+        "description": "Translate readiness signals into faster hiring decisions and stronger conversion rates."
+      }
+    ]
+  },
+  "contact": {
+    "email": "hello@skillsense.ai",
+    "phone": "+1-800-555-0101",
+    "headline": "Ready to launch placements?",
+    "subtext": "Drop us a line and we will help turn your candidates into verified talent."
+  }
+}
