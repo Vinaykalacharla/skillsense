@@ -68,18 +68,31 @@ const buildAllowedOrigins = (value) => {
 };
 const allowedOrigins = new Set(buildAllowedOrigins(frontendUrl));
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin)) {
-        return callback(null, true);
-      }
+const corsOptionsDelegate = (req, callback) => {
+  const origin = req.header('Origin');
+  let corsOptions;
+  
+  const host = req.get('host');
+  const protocol = req.protocol;
+  const selfOrigin = `${protocol}://${host}`;
+  
+  const isAllowed = 
+    !origin || 
+    allowedOrigins.has(origin) || 
+    origin === selfOrigin || 
+    origin.endsWith('.onrender.com') ||
+    origin.includes('localhost') || 
+    origin.includes('127.0.0.1');
 
-      return callback(new Error(`Origin ${origin} is not allowed by CORS`));
-    },
-    credentials: true,
-  })
-);
+  if (isAllowed) {
+    corsOptions = { origin: true, credentials: true };
+  } else {
+    corsOptions = { origin: false };
+  }
+  callback(null, corsOptions);
+};
+
+app.use(cors(corsOptionsDelegate));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

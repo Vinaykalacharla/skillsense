@@ -7,6 +7,7 @@ const {
   createSavedSearch,
   downloadCandidateReport,
   downloadCandidateResume,
+  analyzeCandidateMatch,
 } = require('../controllers/recruiterController');
 
 const router = express.Router();
@@ -17,5 +18,6 @@ router.post('/recruiter-dashboard/jobs/', protect, express.json(), createRecruit
 router.post('/recruiter-dashboard/pipeline/:studentId/', protect, express.json(), updateCandidatePipeline);
 router.post('/recruiter-dashboard/saved-searches/', protect, express.json(), createSavedSearch);
 router.get('/recruiter-dashboard/resume/:studentId/', protect, downloadCandidateResume);
+router.post('/recruiter-dashboard/candidates/:studentId/analyze-match', protect, express.json(), analyzeCandidateMatch);
 
 module.exports = router;

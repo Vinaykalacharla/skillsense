@@ -201,6 +201,7 @@ export default function RecruiterDashboard() {
   const [creatingJob, setCreatingJob] = useState(false);
   const [savingPipeline, setSavingPipeline] = useState(false);
   const [savingSearch, setSavingSearch] = useState(false);
+  const [analyzingMatch, setAnalyzingMatch] = useState(false);
   const [savedSearchName, setSavedSearchName] = useState('');
   const [jobForm, setJobForm] = useState({
     title: '',
@@ -663,6 +664,66 @@ export default function RecruiterDashboard() {
     setMinScore(String(savedSearch.filters.min_score ?? 0));
     setVerifiedOnly(Boolean(savedSearch.filters.verified_only));
     setSelectedJobId(savedSearch.filters.job_id ?? null);
+  };
+
+  const handleAnalyzeMatch = async () => {
+    const token = localStorage.getItem('accessToken');
+    if (!token || !selectedCandidate || !selectedJobId) {
+      setError('Select a candidate and an active job brief first.');
+      return;
+    }
+    setAnalyzingMatch(true);
+    try {
+      const response = await fetch(
+        buildApiUrl(`/api/skills/recruiter-dashboard/candidates/${selectedCandidate.id}/analyze-match`),
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ job_id: selectedJobId }),
+        }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Unable to analyze candidate match.');
+      }
+      setSelectedCandidate((current) =>
+        current
+          ? {
+              ...current,
+              semantic_score: payload.semantic_score,
+              match_reasons: payload.match_reasons,
+              matched_keywords: payload.matched_keywords,
+              missing_keywords: payload.missing_keywords,
+            }
+          : current
+      );
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              candidates: current.candidates.map((candidate) =>
+                candidate.id === selectedCandidate.id
+                  ? {
+                      ...candidate,
+                      semantic_score: payload.semantic_score,
+                      match_reasons: payload.match_reasons,
+                      matched_keywords: payload.matched_keywords,
+                      missing_keywords: payload.missing_keywords,
+                    }
+                  : candidate
+              ),
+            }
+          : current
+      );
+      setError('');
+    } catch (analysisError) {
+      setError(analysisError instanceof Error ? analysisError.message : 'Unable to analyze candidate match.');
+    } finally {
+      setAnalyzingMatch(false);
+    }
   };
 
   const scoreSummaryCards = [
@@ -1283,6 +1344,20 @@ export default function RecruiterDashboard() {
                         <div className="text-xs text-muted-foreground">
                           Semantic overlap score: {selectedCandidate.semantic_score ?? 0}/100
                         </div>
+                        {selectedJobId && (
+                          <div className="mt-3">
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={handleAnalyzeMatch} 
+                              disabled={analyzingMatch || !selectedJobId}
+                              className="w-full text-xs"
+                            >
+                              <Star className="w-3 h-3 mr-2 text-primary" />
+                              {analyzingMatch ? 'Analyzing Match...' : 'AI Match Analysis'}
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </div>
 

@@ -7,6 +7,7 @@ const {
   handleBatchUpload,
   updateUniversityIntervention,
   createPlacementDrive,
+  generateAIIntervention,
 } = require('../controllers/universityController');
 
 const storage = multer.diskStorage({
@@ -23,6 +24,7 @@ const router = express.Router();
 router.get('/university-dashboard/', protect, getUniversityDashboard);
 router.post('/university-dashboard/batch-upload/', protect, upload.single('file'), handleBatchUpload);
 router.post('/university-dashboard/interventions/:studentId/', protect, express.json(), updateUniversityIntervention);
+router.post('/university-dashboard/interventions/:studentId/ai-plan', protect, express.json(), generateAIIntervention);
 router.post('/university-dashboard/drives/', protect, express.json(), createPlacementDrive);
 
 module.exports = router;

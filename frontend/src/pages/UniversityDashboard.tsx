@@ -160,6 +160,7 @@ export default function UniversityDashboard() {
   const [uploadSummary, setUploadSummary] = useState<BatchUpload['summary'] | null>(null);
   const [savingDrive, setSavingDrive] = useState(false);
   const [savingInterventionId, setSavingInterventionId] = useState<number | null>(null);
+  const [generatingAIId, setGeneratingAIId] = useState<number | null>(null);
   const [interventionDrafts, setInterventionDrafts] = useState<
     Record<number, Pick<InterventionItem, 'status' | 'priority' | 'note' | 'recommended_action'>>
   >({});
@@ -363,7 +364,50 @@ export default function UniversityDashboard() {
     } catch (interventionError) {
       setError(interventionError instanceof Error ? interventionError.message : 'Unable to update intervention.');
     } finally {
-      setSavingInterventionId(studentId);
+      setSavingInterventionId(null);
+    }
+  };
+
+  const handleGenerateAIPlan = async (studentId: number) => {
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      return;
+    }
+    setGeneratingAIId(studentId);
+    try {
+      const response = await fetch(
+        buildApiUrl(`/api/skills/university-dashboard/interventions/${studentId}/ai-plan`),
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Unable to generate AI plan.');
+      }
+      setInterventionDrafts((current) => ({
+        ...current,
+        [studentId]: {
+          ...(current[studentId] || {
+            status: 'planned',
+            priority: 'medium',
+            note: '',
+            recommended_action: '',
+          }),
+          recommended_action: payload.recommended_action || current[studentId]?.recommended_action,
+          note: payload.note || current[studentId]?.note,
+          priority: (payload.priority as InterventionItem['priority']) || current[studentId]?.priority,
+        },
+      }));
+      setError('');
+    } catch (aiError) {
+      setError(aiError instanceof Error ? aiError.message : 'Unable to generate AI plan.');
+    } finally {
+      setGeneratingAIId(null);
     }
   };
 
@@ -992,13 +1036,25 @@ export default function UniversityDashboard() {
                               placeholder="Advisor note, owner, or next checkpoint"
                               className="min-h-[88px]"
                             />
-                            <Button
-                              variant="outline"
-                              onClick={() => handleInterventionSave(item.id)}
-                              disabled={savingInterventionId === item.id}
-                            >
-                              {savingInterventionId === item.id ? 'Saving...' : 'Save Intervention'}
-                            </Button>
+                            <div className="flex gap-3">
+                              <Button
+                                variant="outline"
+                                onClick={() => handleInterventionSave(item.id)}
+                                disabled={savingInterventionId === item.id}
+                                className="flex-1"
+                              >
+                                {savingInterventionId === item.id ? 'Saving...' : 'Save Intervention'}
+                              </Button>
+                              <Button
+                                variant="default"
+                                onClick={() => handleGenerateAIPlan(item.id)}
+                                disabled={generatingAIId === item.id}
+                                className="flex-1"
+                              >
+                                <Target className="w-4 h-4 mr-2" />
+                                {generatingAIId === item.id ? 'Generating...' : 'AI Support Plan'}
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ))

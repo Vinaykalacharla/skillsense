@@ -7,6 +7,7 @@ const RecruiterJob = require('../models/recruiterJobModel');
 const CandidatePipeline = require('../models/candidatePipelineModel');
 const SavedSearch = require('../models/savedSearchModel');
 const InterviewSchedule = require('../models/interviewScheduleModel');
+const { callAi } = require('../utils/aiClient');
 
 const toNumericId = (value) => {
   if (!value) {
@@ -321,7 +322,7 @@ const buildCandidateReportPdf = (student, res) => {
   doc.text(`Score: ${student.scores?.placement_ready ?? 70}`);
   doc.moveDown();
   doc.fontSize(12).text('Top Skills:');
-  (student.student_skills || []).forEach((skill) => doc.text(`• ${skill}`));
+  (student.student_skills || []).forEach((skill) => doc.text(`ï¿½ ${skill}`));
   doc.moveDown();
   doc.fontSize(12).text('Linked Profiles:');
   doc.text(`GitHub: ${student.github_link || 'N/A'}`);
@@ -365,6 +366,64 @@ const downloadCandidateResume = asyncHandler(async (req, res) => {
   res.download(absolutePath);
 });
 
+const analyzeCandidateMatch = asyncHandler(async (req, res) => {
+  requireRecruiter(req.user);
+  const studentId = Number(req.params.studentId);
+  const { job_id } = req.body;
+
+  if (!studentId || !job_id) {
+    res.status(400);
+    throw new Error('Student ID and Job ID are required');
+  }
+
+  const candidate = await User.findOne({ numeric_id: studentId, role: 'student' });
+  if (!candidate) {
+    res.status(404);
+    throw new Error('Candidate not found');
+  }
+
+  const job = await RecruiterJob.findOne({ _id: job_id, recruiter: req.user._id });
+  if (!job) {
+    res.status(404);
+    throw new Error('Job not found');
+  }
+
+  const systemPrompt = `You are an expert technical recruiter and AI semantic matcher. Your task is to evaluate how well a candidate matches a job description.
+Return a JSON object with:
+- semantic_score (number 0-100)
+- match_reasons (array of 2-3 short sentences explaining the fit)
+- matched_keywords (array of matching strings)
+- missing_keywords (array of missing strings)
+
+Focus on the candidate's skills, focus area, and experience compared to the job requirements.`;
+
+  const candidateProfile = `
+Name: ${candidate.full_name || candidate.username}
+Focus Area: ${(candidate.student_skills || [])[0] || 'N/A'}
+Skills: ${(candidate.student_skills || []).join(', ')}
+Headline: ${candidate.linkedin_headline || 'N/A'}
+About: ${candidate.linkedin_about || 'N/A'}
+`;
+
+  const jobProfile = `
+Title: ${job.title}
+Description: ${job.description}
+Required Skills: ${job.required_skills?.join(', ')}
+Preferred Skills: ${job.preferred_skills?.join(', ')}
+`;
+
+  const prompt = `Candidate:\n${candidateProfile}\n\nJob:\n${jobProfile}`;
+
+  try {
+    const analysis = await callAi(prompt, systemPrompt);
+    res.json(analysis);
+  } catch (err) {
+    console.error('AI match analysis failed:', err);
+    res.status(500);
+    throw new Error('AI analysis failed');
+  }
+});
+
 module.exports = {
   getRecruiterDashboard,
   createRecruiterJob,
@@ -372,4 +431,6 @@ module.exports = {
   createSavedSearch,
   downloadCandidateReport,
   downloadCandidateResume,
+  analyzeCandidateMatch,
 };
+

@@ -11,6 +11,7 @@ const PerformancePoint = require('../models/performancePointModel');
 const { analyzeGithubTarget } = require('../utils/githubAnalysis');
 const { analyzeLeetcodeTarget } = require('../utils/leetcodeAnalysis');
 const CodeAnalysisReport = require('../models/codeAnalysisReportModel');
+const { callAi } = require('../utils/aiClient');
 
 const toNumericId = (value) => {
   if (!value) {
@@ -393,9 +394,53 @@ const createPlacementDrive = asyncHandler(async (req, res) => {
   res.status(201).json({ drive: mapPlacementDrive(drive, students) });
 });
 
+const generateAIIntervention = asyncHandler(async (req, res) => {
+  requireUniversity(req.user);
+  const studentId = Number(req.params.studentId);
+  if (!studentId) {
+    res.status(400);
+    throw new Error('Student ID required');
+  }
+
+  const student = await User.findOne({ numeric_id: studentId, role: 'student' });
+  if (!student) {
+    res.status(404);
+    throw new Error('Student not found');
+  }
+
+  const systemPrompt = `You are an expert academic advisor and AI intervention planner.
+Based on the student's current profile, scores, and focus areas, recommend an intervention plan.
+Return a JSON object with:
+- recommended_action (string: a clear 1-2 sentence action plan for the student)
+- note (string: a note for the advisor or university tracking)
+- priority (string: "high", "medium", or "low")`;
+
+  const studentProfile = `
+Name: ${student.full_name || student.username}
+Focus Area: ${(student.student_skills || [])[0] || 'N/A'}
+Placement Ready Score: ${student.scores?.placement_ready ?? 70}/100
+Coding Score: ${student.scores?.coding_skill_index ?? 70}/100
+Communication Score: ${student.scores?.communication_score ?? 70}/100
+Authenticity Score: ${student.scores?.authenticity_score ?? 70}/100
+`;
+
+  const prompt = `Student Profile:\n${studentProfile}`;
+
+  try {
+    const analysis = await callAi(prompt, systemPrompt);
+    res.json(analysis);
+  } catch (err) {
+    console.error('AI intervention generation failed:', err);
+    res.status(500);
+    throw new Error('AI analysis failed');
+  }
+});
+
 module.exports = {
   getUniversityDashboard,
   handleBatchUpload,
   updateUniversityIntervention,
   createPlacementDrive,
+  generateAIIntervention,
 };
+
