@@ -140,7 +140,7 @@ if (process.env.NODE_ENV === 'production') {
   const frontendPath = path.join(__dirname, '..', '..', 'frontend', 'dist');
   if (fs.existsSync(frontendPath)) {
     app.use(express.static(frontendPath));
-    app.get('/*splat', (req, res) => {
+    app.get(/(.*)/, (req, res) => {
       if (!req.path.startsWith('/api')) {
         res.sendFile(path.join(frontendPath, 'index.html'));
       } else {
@@ -163,18 +163,14 @@ app.use((req, res, next) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// Global Error Logger to File
+// Global Error Logger
 app.use((err, req, res, next) => {
-  const errorLog = path.join(__dirname, '..', 'error_debug.log');
-  const logData = `
---- ERROR ${new Date().toISOString()} ---
-Path: ${req.path}
-Method: ${req.method}
-Error: ${err.message}
-Stack: ${err.stack}
-------------------------------------------
-\n`;
-  fs.appendFileSync(errorLog, logData);
+  console.error(`\n--- ERROR ${new Date().toISOString()} ---`);
+  console.error(`Path: ${req.path}`);
+  console.error(`Method: ${req.method}`);
+  console.error(`Error: ${err.message}`);
+  console.error(`Stack: ${err.stack}`);
+  console.error(`------------------------------------------\n`);
   errorHandler(err, req, res, next);
 });
 
