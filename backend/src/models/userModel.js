@@ -82,6 +82,7 @@ const userSchema = new mongoose.Schema(
     numeric_id: { type: Number, unique: true, sparse: true, index: true },
     resume_path: { type: String },
     ai_analysis: { type: mongoose.Schema.Types.Mixed },
+    ats_report: { type: mongoose.Schema.Types.Mixed },
     scores: { type: scoreSchema, default: () => ({}) },
     breakdown: { type: breakdownSchema, default: () => ({}) },
   },

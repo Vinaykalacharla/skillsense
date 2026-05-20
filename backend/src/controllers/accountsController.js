@@ -11,7 +11,8 @@ const {
   deriveGithubInsights,
   deriveScores,
 } = require('../utils/scoring');
-const { parseResume } = require('../utils/resumeParser');
+const { parseResume, extractTextFromFile } = require('../utils/resumeParser');
+const { generateAtsReport } = require('../utils/atsAnalyzer');
 const { analyzeGithubTarget, normalizeGithubInput } = require('../utils/githubAnalysis');
 const { analyzeLeetcodeTarget } = require('../utils/leetcodeAnalysis');
 const CodeAnalysisReport = require('../models/codeAnalysisReportModel');
@@ -451,6 +452,50 @@ const syncFromResume = asyncHandler(async (req, res) => {
   });
 });
 
+const checkAts = asyncHandler(async (req, res) => {
+  let resumePath = req.file ? req.file.path : undefined;
+
+  // If no file was uploaded, fallback to their existing resume_path
+  if (!resumePath && req.user.resume_path) {
+    resumePath = req.user.resume_path;
+  }
+
+  if (!resumePath) {
+    return res.status(400).json({ error: 'Please upload a resume to check or make sure you have uploaded one during registration.' });
+  }
+
+  try {
+    const text = await extractTextFromFile(resumePath);
+    if (!text || text.trim().length < 50) {
+      return res.status(400).json({ error: 'Failed to extract text from the resume file. Ensure the file is not empty or corrupted.' });
+    }
+
+    const report = await generateAtsReport(text, req.user);
+    
+    // Save report in user document
+    req.user.ats_report = report;
+    
+    // If a new resume file was uploaded, also update their resume_path in profile
+    if (req.file) {
+      req.user.resume_path = req.file.path;
+    }
+
+    await req.user.save();
+
+    res.json(report);
+  } catch (error) {
+    console.error('Error in ATS checking controller:', error);
+    res.status(500).json({ error: 'Internal server error during ATS scoring. Please try again.' });
+  }
+});
+
+const getAtsReport = asyncHandler(async (req, res) => {
+  if (!req.user.ats_report) {
+    return res.status(404).json({ message: 'No ATS report found. Run an ATS check first.' });
+  }
+  res.json(req.user.ats_report);
+});
+
 module.exports = {
   signup,
   login,
@@ -460,5 +505,7 @@ module.exports = {
   getProfile,
   updateProfile,
   syncFromResume,
+  checkAts,
+  getAtsReport,
   logout,
 };

@@ -14,6 +14,7 @@ import DashboardMedia from "./pages/DashboardMedia";
 import DashboardProgress from "./pages/DashboardProgress";
 import DashboardRoadmap from "./pages/DashboardRoadmap";
 import DashboardResumeBuilder from "./pages/DashboardResumeBuilder";
+import DashboardAtsChecker from "./pages/DashboardAtsChecker";
 import DashboardSettings from "./pages/DashboardSettings";
 import SkillPassport from "./pages/SkillPassport";
 import AIInterview from "./pages/AIInterview";
@@ -46,6 +47,7 @@ const App = () => (
           <Route path="/dashboard/progress" element={<DashboardProgress />} />
           <Route path="/dashboard/roadmap" element={<DashboardRoadmap />} />
           <Route path="/dashboard/resume-builder" element={<DashboardResumeBuilder />} />
+          <Route path="/dashboard/ats" element={<DashboardAtsChecker />} />
           <Route path="/dashboard/settings" element={<DashboardSettings />} />
           <Route path="/recruiter/dashboard" element={<RecruiterDashboard />} />
           <Route path="/university/dashboard" element={<UniversityDashboard />} />

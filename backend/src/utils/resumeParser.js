@@ -119,4 +119,4 @@ Extract the details in this JSON format:
   }
 };
 
-module.exports = { parseResume };
+module.exports = { parseResume, extractTextFromFile };

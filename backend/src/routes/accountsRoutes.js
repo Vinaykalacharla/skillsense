@@ -9,6 +9,8 @@ const {
   getProfile,
   updateProfile,
   syncFromResume,
+  checkAts,
+  getAtsReport,
   logout,
 } = require('../controllers/accountsController');
 const { protect } = require('../middleware/authMiddleware');
@@ -33,5 +35,9 @@ router.post('/sync-from-resume/', protect, syncFromResume);
 router.get('/score-report/', protect, scoreReport);
 router.get('/profile/', protect, getProfile);
 router.patch('/profile/update/', protect, express.json(), updateProfile);
+
+// ATS Score Checker routes
+router.post('/ats-check/', protect, upload.single('resume'), checkAts);
+router.get('/ats-report/', protect, getAtsReport);
 
 module.exports = router;
