@@ -2,40 +2,52 @@ const fs = require('fs');
 const pdf = require('pdf-parse');
 const { callAi } = require('./aiClient');
 
-/**
- * Extracts text from a file (PDF or TXT)
- */
 const extractTextFromFile = async (filePath) => {
-  const dataBuffer = fs.readFileSync(filePath);
-  const extension = filePath.split('.').pop().toLowerCase();
-
-  if (extension === 'pdf') {
-    try {
-      // Handle the newer class-based API (pdf-parse 2.x)
-      if (typeof pdf === 'object' && pdf.PDFParse) {
-        const parser = new pdf.PDFParse({ data: dataBuffer });
-        const result = await parser.getText();
-        return result.text;
-      }
-      
-      // Handle the classic function-based API (pdf-parse 1.x)
-      if (typeof pdf === 'function') {
-        const data = await pdf(dataBuffer);
-        return data.text;
-      }
-
-      // Fallback for some other variants
-      const data = await pdf(dataBuffer);
-      return data.text;
-    } catch (err) {
-      console.error('Error extracting PDF text:', err);
+  try {
+    if (!filePath || typeof filePath !== 'string') {
+      console.error('Invalid file path provided to extractTextFromFile:', filePath);
       return '';
     }
-  } else if (extension === 'txt') {
-    return dataBuffer.toString();
-  } else {
-    // For now, only PDF and TXT are supported
-    return dataBuffer.toString();
+
+    if (!fs.existsSync(filePath)) {
+      console.error(`File not found at path: ${filePath}`);
+      return '';
+    }
+
+    const dataBuffer = fs.readFileSync(filePath);
+    const extension = filePath.split('.').pop().toLowerCase();
+
+    if (extension === 'pdf') {
+      try {
+        // Handle the newer class-based API (pdf-parse 2.x)
+        if (typeof pdf === 'object' && pdf.PDFParse) {
+          const parser = new pdf.PDFParse({ data: dataBuffer });
+          const result = await parser.getText();
+          return result.text;
+        }
+        
+        // Handle the classic function-based API (pdf-parse 1.x)
+        if (typeof pdf === 'function') {
+          const data = await pdf(dataBuffer);
+          return data.text;
+        }
+
+        // Fallback for some other variants
+        const data = await pdf(dataBuffer);
+        return data.text;
+      } catch (err) {
+        console.error('Error extracting PDF text:', err);
+        return '';
+      }
+    } else if (extension === 'txt') {
+      return dataBuffer.toString();
+    } else {
+      // Fallback for other text-based extensions
+      return dataBuffer.toString();
+    }
+  } catch (err) {
+    console.error('Unhandled error in extractTextFromFile:', err);
+    return '';
   }
 };
 
