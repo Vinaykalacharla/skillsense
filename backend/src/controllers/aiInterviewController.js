@@ -67,6 +67,43 @@ const buildQuestions = (profile) => {
   return queue;
 };
 
+const generateQuestionsWithAi = async (profile) => {
+  const targetCount = profile.question_count || 6;
+  try {
+    const systemPrompt = `You are an elite technical interviewer. Generate a structured list of interview questions.
+You must return a JSON object with a single key "questions" which is an array of objects.
+Each object in the array must contain:
+- question (string: the actual question)
+- difficulty (string: "easy", "medium", or "hard")
+- competency (string: a single category like "coding", "architecture", "problem solving", "communication", "leadership")
+- panelist (string: name/role of the panelist asking it, e.g. "System Lead", "Hiring Manager", "Product Manager", "Architect")
+- evaluation_focus (string: what this question evaluates, e.g. "scalability", "star methodology", "data structures", "teamwork")
+
+Generate exactly the number of questions requested (${targetCount}), customized for:
+Role: ${profile.target_role || 'Software Engineer'}
+Seniority: ${profile.seniority || 'new_grad'}
+Company Style: ${profile.company_style || 'product'}
+Mode: ${profile.interview_mode || 'mixed'}
+Focus Areas: ${(profile.focus_areas || []).join(', ')}
+
+Ensure the questions are challenging, professional, and diverse. Do not return any text before or after the JSON.`;
+
+    const prompt = `Generate exactly ${targetCount} interview questions for a ${profile.seniority} ${profile.target_role} role.`;
+    
+    const response = await callAi(prompt, systemPrompt);
+    if (response && Array.isArray(response.questions) && response.questions.length > 0) {
+      return response.questions.map((q, idx) => ({
+        ...q,
+        question: q.question.includes(`(Q${idx + 1})`) ? q.question : `${q.question} (Q${idx + 1})`,
+      }));
+    }
+  } catch (err) {
+    console.error('AI question generation failed, falling back to library:', err);
+  }
+  
+  return buildQuestions(profile);
+};
+
 const evaluateAnswer = async (message, questionContext = '') => {
   const wordCount = message.split(/\s+/).filter(Boolean).length;
   
@@ -77,16 +114,28 @@ const evaluateAnswer = async (message, questionContext = '') => {
       sentiment: 'neutral',
       strength: 'Direct response',
       improvement: 'Provide more detail and examples',
+      quality_score: 25,
+      coach_summary: 'The response is too brief. Try to explain your experiences and engineering choices in more detail.',
+      rubric: {
+        communication: 2,
+        technical_depth: 1,
+        problem_solving: 2
+      },
+      red_flags: ['Extremely brief response']
     };
   }
 
   try {
     const systemPrompt = `You are an expert technical interviewer. Evaluate the candidate's response to an interview question.
 Return a JSON object with:
-- points (number 5-20 based on depth and relevance)
+- points (number 5-20 based on depth, relevance, and accuracy)
 - sentiment (string: "positive", "neutral", "negative")
 - strength (string: one key strength of the answer)
 - improvement (string: one specific way to improve)
+- quality_score (number 0-100: overall grade of this specific response)
+- coach_summary (string: 2-3 sentences explaining your grade and how to improve)
+- rubric (object: sub-metric scores out of 10, containing "communication", "technical_depth", "problem_solving")
+- red_flags (array of strings: any red flags like "poor communication", "factual error", or empty if none)
 
 Focus on evidence of ownership, technical clarity, and impact.`;
 
@@ -106,8 +155,90 @@ Focus on evidence of ownership, technical clarity, and impact.`;
       sentiment: wordCount > 12 ? 'positive' : 'neutral',
       strength: 'Clear ownership signal',
       improvement: 'Add measurable outcomes',
+      quality_score: Math.min(100, points * 5),
+      coach_summary: 'Decent attempt. Try structuring your response using the STAR method for maximum impact.',
+      rubric: {
+        communication: Math.min(10, Math.round(points / 2)),
+        technical_depth: Math.min(10, Math.round(points / 2.2)),
+        problem_solving: Math.min(10, Math.round(points / 2))
+      },
+      red_flags: []
     };
   }
+};
+
+const generateFinalVerdict = async (answers, profile) => {
+  if (!answers || !answers.length) {
+    return {
+      strengths: ['Started session'],
+      improvements: ['Complete the questions to see analysis'],
+      red_flags: [],
+      next_steps: ['Answer mock questions to build signal'],
+      readiness_score: 20,
+      recommendation: 'Needs Practice',
+      competency_scores: {
+        communication: 20,
+        'problem solving': 20
+      },
+      highlights: []
+    };
+  }
+
+  try {
+    const transcriptSummaryText = answers.map((ans, idx) => {
+      return `Q${idx + 1}: ${ans.question}\nA: ${ans.answer}\nScore: ${ans.points}/20. Strength: ${ans.analysis?.strength || ''}. Improvement: ${ans.analysis?.improvement || ''}.`;
+    }).join('\n\n');
+
+    const focusAreas = profile.focus_areas || ['problem solving', 'communication'];
+    const competencyKeys = focusAreas.map(f => `"${f}"`).join(', ');
+
+    const systemPrompt = `You are the lead panel reviewer at a top tech company. Evaluate the candidate's complete interview transcript.
+Return a JSON object with:
+- readiness_score (number: overall placement readiness 0-100)
+- strengths (array of strings: 2-3 specific strengths shown in their answers)
+- improvements (array of strings: 2-3 specific areas they need to work on)
+- red_flags (array of strings: any potential red flags, or empty if none)
+- next_steps (array of strings: 2-3 actionable advice steps for preparation)
+- competency_scores (object: mapping of focus areas to scores between 20-100, e.g. if focus areas are [${competencyKeys}], return scores for these keys)
+- highlights (array of strings: 1-2 notable positive moments or details from the transcript)
+- recommendation (string: one of "Strong Hire", "Hire", "Needs Practice", or "Not Ready")
+
+Be objective, constructive, and base your analysis strictly on the candidate's answers.`;
+
+    const prompt = `Interview Target:
+Role: ${profile.target_role}
+Seniority: ${profile.seniority}
+Company Style: ${profile.company_style}
+
+Transcript Details:
+${transcriptSummaryText}`;
+
+    const verdict = await callAi(prompt, systemPrompt);
+    if (verdict && typeof verdict.readiness_score === 'number') {
+      return verdict;
+    }
+  } catch (err) {
+    console.error('Failed to generate AI final verdict, falling back:', err);
+  }
+
+  const totalPoints = answers.reduce((sum, a) => sum + (a.points || 0), 0);
+  const maxPoints = answers.length * 20;
+  const percentage = maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 100) : 40;
+  const readiness = Math.min(100, Math.max(20, percentage));
+  
+  return {
+    strengths: [`${profile.target_role || 'Software Engineer'} communication`],
+    improvements: ['Structure answers with impact and metrics'],
+    red_flags: readiness < 60 ? ['Answers were brief'] : [],
+    next_steps: ['Review transcript and rehearse follow-ups'],
+    readiness_score: readiness,
+    recommendation: readiness >= 75 ? 'Hire' : 'Needs Practice',
+    competency_scores: (profile.focus_areas || []).reduce((acc, focus) => {
+      acc[focus] = readiness;
+      return acc;
+    }, {}),
+    highlights: [`Completed ${answers.length} questions`],
+  };
 };
 
 const buildSummary = (answers, questions, profile, score) => {
@@ -197,6 +328,8 @@ const buildSessionPayload = async (user, session) => {
       summary: {},
       latest_analysis: {},
       setup_defaults,
+      answers: [],
+      questions: [],
       ...buildSessionState({ questions: [], current_index: 0, score: 0 }, setup_defaults),
     };
   }
@@ -214,6 +347,8 @@ const buildSessionPayload = async (user, session) => {
     latest_analysis,
     setup_defaults,
     updated_at: session.updatedAt?.toISOString(),
+    answers: session.answers || [],
+    questions: session.questions || [],
     ...buildSessionState(session, session.session_profile || setup_defaults),
   };
 };
@@ -247,7 +382,7 @@ const handleInterviewAction = asyncHandler(async (req, res) => {
       { user: req.user._id, status: 'active' },
       { status: 'completed', completed_at: new Date(), updatedAt: new Date() },
     );
-    const questions = buildQuestions(profile);
+    const questions = await generateQuestionsWithAi(profile);
     const transcript = [];
     if (questions.length) {
       transcript.push({
@@ -332,6 +467,12 @@ const handleInterviewAction = asyncHandler(async (req, res) => {
         evaluation_focus: nextQuestion.evaluation_focus,
       });
       session.current_index = nextIndex;
+      
+      const summary = buildSummary(answers, questions, session.session_profile || buildDefaults(req.user), session.score || 0);
+      session.summary = summary;
+      session.metrics = buildMetrics(session.score || 0);
+      session.feedback = buildFeedback(analysis);
+      session.tips = buildTips(answers, summary);
     } else {
       session.status = 'completed';
       session.completed_at = new Date();
@@ -344,12 +485,14 @@ const handleInterviewAction = asyncHandler(async (req, res) => {
         competency: 'summary',
         question_index: index,
       });
+      
+      const finalVerdictSummary = await generateFinalVerdict(answers, session.session_profile || buildDefaults(req.user));
+      session.score = finalVerdictSummary.readiness_score || session.score;
+      session.summary = finalVerdictSummary;
+      session.metrics = buildMetrics(session.score || 0);
+      session.feedback = buildFeedback(analysis);
+      session.tips = buildTips(answers, finalVerdictSummary);
     }
-    const summary = buildSummary(answers, questions, session.session_profile || buildDefaults(req.user), session.score || 0);
-    session.summary = summary;
-    session.metrics = buildMetrics(session.score || 0);
-    session.feedback = buildFeedback(analysis);
-    session.tips = buildTips(answers, summary);
     session.latest_analysis = analysis;
     session.transcript = transcript;
     await session.save();
@@ -358,26 +501,26 @@ const handleInterviewAction = asyncHandler(async (req, res) => {
 
   if (action === 'finish') {
     const answers = session.answers || [];
-    const questions = session.questions || [];
-    const summary = buildSummary(answers, questions, session.session_profile || buildDefaults(req.user), session.score || 0);
+    const finalVerdictSummary = await generateFinalVerdict(answers, session.session_profile || buildDefaults(req.user));
+    session.score = finalVerdictSummary.readiness_score || session.score;
     const transcript = [...(session.transcript || [])];
     if (!transcript.length || transcript[transcript.length - 1]?.difficulty !== 'summary') {
       transcript.push({
         speaker: 'AI',
-        text: `Session closed. Recommendation: ${summary.recommendation || 'Keep practicing'}.`,
+        text: `Session closed. Recommendation: ${finalVerdictSummary.recommendation || 'Keep practicing'}.`,
         difficulty: 'summary',
         panelist: 'AI Review Board',
         competency: 'summary',
-        question_index: session.current_index || questions.length,
+        question_index: session.current_index || session.questions.length,
       });
     }
     session.status = 'completed';
     session.completed_at = new Date();
-    session.summary = summary;
+    session.summary = finalVerdictSummary;
     session.metrics = buildMetrics(session.score || 0);
-    session.tips = buildTips(answers, summary);
+    session.tips = buildTips(answers, finalVerdictSummary);
     session.transcript = transcript;
-    session.current_index = questions.length;
+    session.current_index = session.questions.length;
     await session.save();
     return res.json(await buildSessionPayload(req.user, session));
   }

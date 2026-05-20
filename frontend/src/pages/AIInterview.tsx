@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { DashboardSidebar } from '@/components/dashboard/Sidebar';
 import {
   AlertCircle,
@@ -7,10 +7,13 @@ import {
   Briefcase,
   CheckCircle2,
   Camera,
+  ChevronDown,
   Clock3,
   MessageSquare,
   Mic,
   MicOff,
+  Play,
+  RotateCcw,
   ShieldAlert,
   Sparkles,
   Square,
@@ -89,6 +92,27 @@ interface LatestAnalysis {
   improvements?: string[];
 }
 
+interface AnswerDetail {
+  question: string;
+  difficulty?: string;
+  competency?: string;
+  panelist?: string;
+  answer: string;
+  word_count?: number;
+  points?: number;
+  analysis?: {
+    quality_score?: number;
+    sentiment?: string;
+    strength?: string;
+    improvement?: string;
+    coach_summary?: string;
+    rubric?: Record<string, number>;
+    red_flags?: string[];
+  };
+}
+
+type PanelistState = 'idle' | 'speaking' | 'listening' | 'analyzing';
+
 interface InterviewHistoryItem {
   id: number;
   status: 'active' | 'completed';
@@ -156,6 +180,10 @@ export default function AIInterview() {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [latestAnalysis, setLatestAnalysis] = useState<LatestAnalysis | null>(null);
   const [sessionProfile, setSessionProfile] = useState<SessionProfile | null>(null);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [panelistState, setPanelistState] = useState<PanelistState>('idle');
+  const [answers, setAnswers] = useState<AnswerDetail[]>([]);
+  const [expandedAnswer, setExpandedAnswer] = useState<number | null>(null);
   const [setupForm, setSetupForm] = useState<SessionProfile>({
     target_role: 'Software Engineer',
     seniority: 'new_grad',
@@ -169,6 +197,8 @@ export default function AIInterview() {
   const [focusAreasInput, setFocusAreasInput] = useState('problem solving, communication, system design');
   const [secondsLeft, setSecondsLeft] = useState(120);
   const maxWarnings = 2;
+  const speechRateRef = useRef(speechRate);
+  speechRateRef.current = speechRate;
 
   ttsEnabledRef.current = ttsEnabled;
 
@@ -328,6 +358,9 @@ export default function AIInterview() {
       summary?: SummaryData;
       latest_analysis?: LatestAnalysis;
       setup_defaults?: SessionProfile;
+      answers?: AnswerDetail[];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      questions?: any[];
     },
   ) => {
     if (data?.status) {
@@ -355,6 +388,9 @@ export default function AIInterview() {
     if (defaults) {
       setSetupForm(defaults);
       setFocusAreasInput((defaults.focus_areas || []).join(', '));
+    }
+    if (Array.isArray(data?.answers)) {
+      setAnswers(data.answers);
     }
     setInterviewState({
       total_questions: data?.total_questions,
@@ -609,11 +645,34 @@ export default function AIInterview() {
       return;
     }
     window.speechSynthesis.cancel();
+    setPanelistState('speaking');
     const utterance = new SpeechSynthesisUtterance(last.text);
-    utterance.rate = 1;
+    utterance.rate = speechRateRef.current;
     utterance.pitch = 1;
+    utterance.onend = () => setPanelistState('listening');
     window.speechSynthesis.speak(utterance);
   }, [transcript, status]);
+
+  useEffect(() => {
+    if (sending) {
+      setPanelistState('analyzing');
+    } else if (status === 'active' && listening) {
+      setPanelistState('listening');
+    } else if (status !== 'active') {
+      setPanelistState('idle');
+    }
+  }, [sending, status, listening]);
+
+  const replayCurrentQuestion = () => {
+    if (!currentQuestion || !('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    setPanelistState('speaking');
+    const utterance = new SpeechSynthesisUtterance(currentQuestion);
+    utterance.rate = speechRateRef.current;
+    utterance.pitch = 1;
+    utterance.onend = () => setPanelistState('listening');
+    window.speechSynthesis.speak(utterance);
+  };
 
   useEffect(() => {
     return () => {
@@ -903,12 +962,35 @@ export default function AIInterview() {
                       </Button>
                       <Button
                         variant="outline"
+                        onClick={replayCurrentQuestion}
+                        disabled={status !== 'active' || !currentQuestion}
+                        className="rounded-full"
+                      >
+                        <RotateCcw className="mr-2 h-4 w-4" />
+                        Replay
+                      </Button>
+                      <Button
+                        variant="outline"
                         onClick={() => setTtsEnabled((prev) => !prev)}
                         className="rounded-full"
                       >
                         {ttsEnabled ? <Volume2 className="mr-2 h-4 w-4" /> : <VolumeX className="mr-2 h-4 w-4" />}
                         {ttsEnabled ? 'Voice on' : 'Voice off'}
                       </Button>
+                      <div className="relative">
+                        <select
+                          value={speechRate}
+                          onChange={(e) => setSpeechRate(Number(e.target.value))}
+                          className="h-9 appearance-none rounded-full border border-input bg-background px-3 pr-7 text-xs font-medium"
+                        >
+                          <option value={0.7}>0.7×</option>
+                          <option value={0.85}>0.85×</option>
+                          <option value={1}>1×</option>
+                          <option value={1.2}>1.2×</option>
+                          <option value={1.5}>1.5×</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+                      </div>
                       <Button
                         variant="outline"
                         onClick={() => setMicEnabled((prev) => !prev)}
@@ -977,15 +1059,88 @@ export default function AIInterview() {
                       {cameraError && <p className="mt-2 text-xs text-destructive">{cameraError}</p>}
                     </div>
                     <div className="rounded-3xl border border-border/60 bg-muted/20 p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                        AI interviewer
-                      </p>
-                      <div className="mt-3 flex h-56 flex-col items-center justify-center rounded-2xl border border-border/60 bg-gradient-to-br from-primary/15 via-background to-accent/10 text-center">
-                        <Brain className="h-8 w-8 text-primary" />
-                        <p className="mt-3 text-sm font-semibold text-foreground">SkillVerify AI</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Live interview mode
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                          AI interviewer
                         </p>
+                        <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                          {panelistState}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex h-56 flex-col items-center justify-center rounded-2xl border border-border/60 bg-gradient-to-br from-primary/15 via-background to-accent/10 text-center relative overflow-hidden">
+                        {/* Animated background ring */}
+                        <motion.div
+                          className="absolute inset-0 rounded-2xl"
+                          style={{
+                            background: panelistState === 'speaking'
+                              ? 'radial-gradient(circle, hsl(var(--primary) / 0.15) 0%, transparent 70%)'
+                              : panelistState === 'listening'
+                              ? 'radial-gradient(circle, hsl(var(--accent) / 0.12) 0%, transparent 70%)'
+                              : panelistState === 'analyzing'
+                              ? 'radial-gradient(circle, hsl(var(--primary) / 0.2) 0%, transparent 70%)'
+                              : 'none',
+                          }}
+                          animate={{
+                            scale: panelistState === 'speaking' ? [1, 1.05, 1] : panelistState === 'analyzing' ? [1, 1.08, 1] : 1,
+                            opacity: panelistState === 'idle' ? 0.3 : [0.5, 1, 0.5],
+                          }}
+                          transition={{
+                            duration: panelistState === 'speaking' ? 0.8 : panelistState === 'analyzing' ? 1.5 : 2,
+                            repeat: Infinity,
+                            ease: 'easeInOut',
+                          }}
+                        />
+                        <motion.div
+                          animate={{
+                            scale: panelistState === 'speaking' ? [1, 1.12, 1] : 1,
+                          }}
+                          transition={{ duration: 0.6, repeat: panelistState === 'speaking' ? Infinity : 0 }}
+                        >
+                          <Brain className="h-8 w-8 text-primary relative z-10" />
+                        </motion.div>
+                        <p className="mt-3 text-sm font-semibold text-foreground relative z-10">
+                          {currentPanelist || 'SkillVerify AI'}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground relative z-10">
+                          {panelistState === 'speaking' && 'Speaking...'}
+                          {panelistState === 'listening' && 'Listening...'}
+                          {panelistState === 'analyzing' && 'Analyzing your response...'}
+                          {panelistState === 'idle' && 'Ready'}
+                        </p>
+                        {/* Audio wave bars for speaking */}
+                        {panelistState === 'speaking' && (
+                          <div className="mt-3 flex items-end gap-[3px] relative z-10">
+                            {[0, 1, 2, 3, 4].map((i) => (
+                              <motion.div
+                                key={i}
+                                className="w-[3px] rounded-full bg-primary"
+                                animate={{ height: [8, 20, 8] }}
+                                transition={{
+                                  duration: 0.5 + i * 0.1,
+                                  repeat: Infinity,
+                                  ease: 'easeInOut',
+                                  delay: i * 0.08,
+                                }}
+                              />
+                            ))}
+                          </div>
+                        )}
+                        {/* Pulse dot for listening */}
+                        {panelistState === 'listening' && (
+                          <motion.div
+                            className="mt-3 h-3 w-3 rounded-full bg-emerald-500 relative z-10"
+                            animate={{ scale: [1, 1.4, 1], opacity: [1, 0.5, 1] }}
+                            transition={{ duration: 1.2, repeat: Infinity }}
+                          />
+                        )}
+                        {/* Rotating ring for analyzing */}
+                        {panelistState === 'analyzing' && (
+                          <motion.div
+                            className="mt-3 h-6 w-6 rounded-full border-2 border-primary/30 border-t-primary relative z-10"
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                          />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1070,6 +1225,172 @@ export default function AIInterview() {
                     )}
                   </div>
                 </motion.div>
+                {/* Question-by-question scorecard for completed sessions */}
+                <AnimatePresence>
+                  {status === 'completed' && answers.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 30 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -20 }}
+                      transition={{ duration: 0.6, delay: 0.15 }}
+                      className="rounded-3xl border border-border/60 bg-card/70 p-6"
+                    >
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                        <h3 className="text-lg font-semibold">Detailed Performance Report</h3>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Click any question to expand your answer, score breakdown, and coaching notes.
+                      </p>
+                      <div className="mt-4 space-y-3">
+                        {answers.map((ans, idx) => {
+                          const isExpanded = expandedAnswer === idx;
+                          const scoreColor =
+                            (ans.points ?? 0) >= 15
+                              ? 'text-emerald-500'
+                              : (ans.points ?? 0) >= 10
+                              ? 'text-amber-500'
+                              : 'text-red-400';
+                          return (
+                            <motion.div
+                              key={idx}
+                              layout
+                              className="rounded-2xl border border-border/60 bg-background/70 overflow-hidden"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => setExpandedAnswer(isExpanded ? null : idx)}
+                                className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-muted/30 transition-colors"
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-xs font-bold text-primary">
+                                    Q{idx + 1}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium truncate">{ans.question}</p>
+                                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                                      {ans.difficulty && (
+                                        <Badge variant="outline" className="text-[9px] uppercase tracking-[0.15em]">
+                                          {ans.difficulty}
+                                        </Badge>
+                                      )}
+                                      {ans.competency && (
+                                        <Badge variant="outline" className="text-[9px] uppercase tracking-[0.15em]">
+                                          {ans.competency}
+                                        </Badge>
+                                      )}
+                                      {ans.panelist && (
+                                        <Badge variant="secondary" className="text-[9px] uppercase tracking-[0.15em]">
+                                          {ans.panelist}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3 flex-shrink-0">
+                                  <span className={`text-lg font-bold ${scoreColor}`}>
+                                    {ans.points ?? 0}/20
+                                  </span>
+                                  <motion.div animate={{ rotate: isExpanded ? 180 : 0 }}>
+                                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                  </motion.div>
+                                </div>
+                              </button>
+                              <AnimatePresence>
+                                {isExpanded && (
+                                  <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    transition={{ duration: 0.3 }}
+                                    className="overflow-hidden"
+                                  >
+                                    <div className="border-t border-border/40 px-4 pb-4 pt-3 space-y-3">
+                                      <div>
+                                        <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Your answer</p>
+                                        <p className="mt-1 text-sm text-foreground/80 leading-relaxed">{ans.answer}</p>
+                                      </div>
+                                      {ans.analysis?.quality_score != null && (
+                                        <div className="flex items-center gap-4">
+                                          <div className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
+                                            <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Quality</p>
+                                            <p className="text-lg font-bold">{ans.analysis.quality_score}<span className="text-xs text-muted-foreground">/100</span></p>
+                                          </div>
+                                          {ans.analysis.sentiment && (
+                                            <div className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
+                                              <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Sentiment</p>
+                                              <p className={`text-sm font-semibold capitalize ${
+                                                ans.analysis.sentiment === 'positive' ? 'text-emerald-500' : ans.analysis.sentiment === 'negative' ? 'text-red-400' : 'text-amber-500'
+                                              }`}>{ans.analysis.sentiment}</p>
+                                            </div>
+                                          )}
+                                          {ans.word_count != null && (
+                                            <div className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2">
+                                              <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Words</p>
+                                              <p className="text-sm font-semibold">{ans.word_count}</p>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                      {ans.analysis?.rubric && (
+                                        <div className="grid grid-cols-3 gap-2">
+                                          {Object.entries(ans.analysis.rubric).map(([key, val]) => (
+                                            <div key={key} className="rounded-xl border border-border/60 bg-background/60 p-2">
+                                              <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">{key.replace(/_/g, ' ')}</p>
+                                              <div className="mt-1 flex items-center gap-2">
+                                                <div className="h-1.5 flex-1 rounded-full bg-muted">
+                                                  <div
+                                                    className="h-full rounded-full bg-gradient-to-r from-primary to-primary/60"
+                                                    style={{ width: `${Math.min(100, (Number(val) / 10) * 100)}%` }}
+                                                  />
+                                                </div>
+                                                <span className="text-xs font-semibold">{val}/10</span>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                      <div className="grid gap-2 md:grid-cols-2">
+                                        {ans.analysis?.strength && (
+                                          <div className="flex items-start gap-2 rounded-xl bg-emerald-500/10 p-3">
+                                            <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-emerald-500 mt-0.5" />
+                                            <span className="text-xs text-foreground">{ans.analysis.strength}</span>
+                                          </div>
+                                        )}
+                                        {ans.analysis?.improvement && (
+                                          <div className="flex items-start gap-2 rounded-xl bg-amber-500/10 p-3">
+                                            <AlertCircle className="h-4 w-4 flex-shrink-0 text-amber-500 mt-0.5" />
+                                            <span className="text-xs text-foreground">{ans.analysis.improvement}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                      {ans.analysis?.coach_summary && (
+                                        <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                                          <p className="text-[10px] uppercase tracking-[0.18em] text-primary">Coach notes</p>
+                                          <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{ans.analysis.coach_summary}</p>
+                                        </div>
+                                      )}
+                                      {(ans.analysis?.red_flags || []).length > 0 && (
+                                        <div className="rounded-xl border border-red-400/20 bg-red-400/5 p-3">
+                                          <p className="text-[10px] uppercase tracking-[0.18em] text-red-400">Red flags</p>
+                                          <div className="mt-1 space-y-1">
+                                            {(ans.analysis?.red_flags || []).map((flag, fi) => (
+                                              <p key={fi} className="text-xs text-foreground">• {flag}</p>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </motion.div>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               <div className="space-y-6">
