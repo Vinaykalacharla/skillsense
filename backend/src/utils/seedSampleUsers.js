@@ -167,10 +167,6 @@ const upsertSampleUser = async (sample) => {
 };
 
 const ensureSampleUsers = async () => {
-  if (process.env.NODE_ENV === 'production') {
-    return;
-  }
-
   const results = [];
   for (const sample of sampleUsers) {
     results.push(await upsertSampleUser(sample));
@@ -178,7 +174,7 @@ const ensureSampleUsers = async () => {
 
   const createdCount = results.filter((item) => item.created).length;
   if (createdCount > 0) {
-    console.log('Seeded sample accounts for local development.');
+    console.log('Seeded sample accounts.');
   }
 
   console.log('Sample login credentials:');
