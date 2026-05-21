@@ -14,6 +14,7 @@ const recruiterRoutes = require('./routes/recruiterRoutes');
 const universityRoutes = require('./routes/universityRoutes');
 const codeAnalysisRoutes = require('./routes/codeAnalysisRoutes');
 const progressRoutes = require('./routes/progressRoutes');
+const questionBankRoutes = require('./routes/questionBankRoutes');
 const { errorHandler } = require('./middleware/errorMiddleware');
 const { ensureSampleUsers } = require('./utils/seedSampleUsers');
 
@@ -147,6 +148,7 @@ app.use('/api/skills', aiInterviewRoutes);
 app.use('/api/skills', recruiterRoutes);
 app.use('/api/skills', universityRoutes);
 app.use('/api/content', contentRoutes);
+app.use('/api/skills', questionBankRoutes);
 
 // Serve Frontend in Production
 if (process.env.NODE_ENV === 'production') {

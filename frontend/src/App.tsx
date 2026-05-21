@@ -21,6 +21,7 @@ import AIInterview from "./pages/AIInterview";
 import RecruiterDashboard from "./pages/RecruiterDashboard";
 import UniversityDashboard from "./pages/UniversityDashboard";
 import NotFound from "./pages/NotFound";
+import DashboardQuestionBank from "./pages/DashboardQuestionBank";
 
 const queryClient = new QueryClient();
 
@@ -49,6 +50,7 @@ const App = () => (
           <Route path="/dashboard/resume-builder" element={<DashboardResumeBuilder />} />
           <Route path="/dashboard/ats" element={<DashboardAtsChecker />} />
           <Route path="/dashboard/settings" element={<DashboardSettings />} />
+          <Route path="/dashboard/questions" element={<DashboardQuestionBank />} />
           <Route path="/recruiter/dashboard" element={<RecruiterDashboard />} />
           <Route path="/university/dashboard" element={<UniversityDashboard />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

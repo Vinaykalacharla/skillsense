@@ -15,20 +15,22 @@ import {
   BookOpen,
   Video,
   LogOut,
+  Library,
 } from 'lucide-react';
 import { buildApiUrl } from '@/lib/api';
 
 const menuItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
-  { icon: Code, label: 'Code Analysis', href: '/dashboard/code' },
-  { icon: Video, label: 'Media', href: '/dashboard/media' },
-  { icon: Mic, label: 'AI Interview', href: '/dashboard/interview' },
-  { icon: BadgeCheck, label: 'Skill Passport', href: '/dashboard/passport' },
-  { icon: FileText, label: 'Resume Builder', href: '/dashboard/resume-builder' },
-  { icon: FileSearch, label: 'ATS Checker', href: '/dashboard/ats' },
-  { icon: TrendingUp, label: 'Progress', href: '/dashboard/progress' },
-  { icon: BookOpen, label: 'Roadmap', href: '/dashboard/roadmap' },
-  { icon: Settings, label: 'Settings', href: '/dashboard/settings' },
+  { icon: LayoutDashboard, label: 'Dashboard',      href: '/dashboard' },
+  { icon: Code,            label: 'Code Analysis',  href: '/dashboard/code' },
+  { icon: Video,           label: 'Media',           href: '/dashboard/media' },
+  { icon: Mic,             label: 'AI Interview',    href: '/dashboard/interview' },
+  { icon: Library,         label: 'Question Bank',   href: '/dashboard/questions' },
+  { icon: BadgeCheck,      label: 'Skill Passport',  href: '/dashboard/passport' },
+  { icon: FileText,        label: 'Resume Builder',  href: '/dashboard/resume-builder' },
+  { icon: FileSearch,      label: 'ATS Checker',     href: '/dashboard/ats' },
+  { icon: TrendingUp,      label: 'Progress',        href: '/dashboard/progress' },
+  { icon: BookOpen,        label: 'Roadmap',         href: '/dashboard/roadmap' },
+  { icon: Settings,        label: 'Settings',        href: '/dashboard/settings' },
 ];
 
 export function DashboardSidebar() {
