@@ -12,7 +12,10 @@ const {
   getPerformanceSeries,
   listMedia,
   uploadMedia,
+  analyzeMediaSpeech,
   getRoadmap,
+  generateRoadmap,
+  toggleRoadmapMilestone,
   getSkillPassport,
   downloadSkillPassportPdf,
   downloadResume,
@@ -43,7 +46,10 @@ router.get('/verification-steps/', protect, getVerificationSteps);
 router.get('/performance/', protect, getPerformanceSeries);
 router.get('/media/', protect, listMedia);
 router.post('/media/', protect, upload.single('file'), uploadMedia);
+router.post('/media/:id/analyze/', protect, analyzeMediaSpeech);
 router.get('/roadmap/', protect, getRoadmap);
+router.post('/roadmap/generate/', protect, generateRoadmap);
+router.post('/roadmap/:id/toggle/', protect, toggleRoadmapMilestone);
 router.get('/skill-passport/', protect, getSkillPassport);
 router.get('/skill-passport/pdf/', protect, downloadSkillPassportPdf);
 router.get('/resume/', protect, downloadResume);

@@ -1,5 +1,19 @@
 const mongoose = require('mongoose');
 
+const aiAnalysisSchema = new mongoose.Schema(
+  {
+    score: { type: Number },
+    pace_wpm: { type: Number },
+    filler_count: { type: Number },
+    filler_words: { type: [String], default: [] },
+    critique: { type: String },
+    strengths: { type: [String], default: [] },
+    improvements: { type: [String], default: [] },
+    analyzed_at: { type: Date },
+  },
+  { _id: false }
+);
+
 const mediaSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -8,6 +22,7 @@ const mediaSchema = new mongoose.Schema(
     status: { type: String, enum: ['processing', 'ready'], default: 'processing' },
     path: { type: String, required: true },
     file_size: { type: Number },
+    ai_analysis: { type: aiAnalysisSchema, default: null },
   },
   { timestamps: true }
 );
