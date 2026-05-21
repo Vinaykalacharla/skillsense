@@ -1,6 +1,9 @@
 const asyncHandler = require('express-async-handler');
 const AiInterviewSession = require('../models/aiInterviewSessionModel');
+const User = require('../models/userModel');
+const PerformancePoint = require('../models/performancePointModel');
 const { callAi } = require('../utils/aiClient');
+const { deriveScores, deriveBreakdown } = require('../utils/scoring');
 
 const QUESTION_LIBRARY = [
   {
@@ -126,18 +129,22 @@ const evaluateAnswer = async (message, questionContext = '') => {
   }
 
   try {
-    const systemPrompt = `You are an expert technical interviewer. Evaluate the candidate's response to an interview question.
-Return a JSON object with:
-- points (number 5-20 based on depth, relevance, and accuracy)
-- sentiment (string: "positive", "neutral", "negative")
-- strength (string: one key strength of the answer)
-- improvement (string: one specific way to improve)
-- quality_score (number 0-100: overall grade of this specific response)
-- coach_summary (string: 2-3 sentences explaining your grade and how to improve)
-- rubric (object: sub-metric scores out of 10, containing "communication", "technical_depth", "problem_solving")
-- red_flags (array of strings: any red flags like "poor communication", "factual error", or empty if none)
+    const systemPrompt = `You are an expert hiring panel member at a top-tier tech company. Your task is to evaluate the candidate's response to a mock interview question with high-grade, professional-level rigor.
 
-Focus on evidence of ownership, technical clarity, and impact.`;
+You must return a JSON object containing the following keys:
+- "points" (number 5 to 20): Assess the depth, structure, and correctness of the answer. Use 5-9 for extremely vague/poor answers, 10-14 for average/satisfactory, 15-18 for strong answers with solid details, and 19-20 for flawless answers demonstrating exceptional technical expertise.
+- "sentiment" (string: "positive", "neutral", or "negative"): Based on the tone and confidence.
+- "strength" (string): Identify one distinct strength (e.g. details active contribution, specifies metrics, highlights system trade-offs).
+- "improvement" (string): Recommend a highly specific architectural or communication improvement.
+- "quality_score" (number 0 to 100): Overall percentage-based grade of this response.
+- "coach_summary" (string): A 2-3 sentence coaching summary. Analyze whether they used the STAR methodology (Situation, Task, Action, Result). State if they missed results (metrics, numbers) or actions (their personal contribution).
+- "rubric" (object): An object containing:
+  - "communication" (number 1 to 10): Grade structure, vocabulary, and conciseness.
+  - "technical_depth" (number 1 to 10): Grade usage of concrete engineering concepts, design decisions, database choices, or algorithm names.
+  - "problem_solving" (number 1 to 10): Grade debugging/resolution strategy, trade-off considerations, and logical flow.
+- "red_flags" (array of strings): Specify any red flags (e.g. "empty/irrelevant response", "contradicts standard practices", "over-promising without action details", "generic buzzword fluff"). Return an empty array if there are none.
+
+Analyze the answer rigorously. Do not write any text outside of the JSON object.`;
 
     const prompt = `Question/Context: ${questionContext}\nCandidate's Answer: ${message}`;
     
@@ -353,6 +360,42 @@ const buildSessionPayload = async (user, session) => {
   };
 };
 
+const syncUserInterviewPerformance = async (userId, session, finalVerdictSummary) => {
+  try {
+    const user = await User.findById(userId);
+    if (!user) return;
+
+    // 1. Update user latest interview attributes
+    user.latest_interview_score = finalVerdictSummary.readiness_score || session.score || 0;
+    user.latest_interview_date = new Date();
+    user.latest_interview_mode = session.session_profile?.interview_mode || 'mixed';
+
+    // 2. Recalculate scores and breakdown
+    const updatedScores = deriveScores(user);
+    user.scores = updatedScores;
+    user.breakdown = deriveBreakdown(updatedScores);
+    
+    await user.save();
+
+    // 3. Log PerformancePoint for today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    await PerformancePoint.findOneAndUpdate(
+      { user: userId, date: today },
+      {
+        coding_skill_index: updatedScores.coding_skill_index,
+        communication_score: updatedScores.communication_score,
+        authenticity_score: updatedScores.authenticity_score,
+        placement_ready: updatedScores.placement_ready,
+      },
+      { upsert: true, new: true }
+    );
+  } catch (err) {
+    console.error('Error synchronizing user interview performance:', err);
+  }
+};
+
 const getInterviewSession = asyncHandler(async (req, res) => {
   const session = await AiInterviewSession.findOne({ user: req.user._id }).sort({ updatedAt: -1 });
   const payload = await buildSessionPayload(req.user, session);
@@ -371,9 +414,11 @@ const handleInterviewAction = asyncHandler(async (req, res) => {
       seniority: req.body.seniority || 'new_grad',
       company_style: req.body.company_style || 'product',
       interview_mode: req.body.interview_mode || 'mixed',
-      focus_areas: Array.isArray(req.body.focus_areas) && req.body.focus_areas.length
+      focus_areas: Array.isArray(req.body.focus_areas) && req.body.focus_areas.length > 0
         ? req.body.focus_areas
-        : ['problem solving', 'communication'],
+        : (Array.isArray(req.user.student_skills) && req.user.student_skills.length > 0
+          ? [...req.user.student_skills.slice(0, 3), 'problem solving', 'communication']
+          : ['problem solving', 'communication', 'system design']),
       question_count: Number(req.body.question_count) || 6,
       answer_time_sec: Number(req.body.answer_time_sec) || 120,
       max_followups: Number(req.body.max_followups) || 3,
@@ -492,6 +537,7 @@ const handleInterviewAction = asyncHandler(async (req, res) => {
       session.metrics = buildMetrics(session.score || 0);
       session.feedback = buildFeedback(analysis);
       session.tips = buildTips(answers, finalVerdictSummary);
+      await syncUserInterviewPerformance(req.user._id, session, finalVerdictSummary);
     }
     session.latest_analysis = analysis;
     session.transcript = transcript;
@@ -521,6 +567,7 @@ const handleInterviewAction = asyncHandler(async (req, res) => {
     session.tips = buildTips(answers, finalVerdictSummary);
     session.transcript = transcript;
     session.current_index = session.questions.length;
+    await syncUserInterviewPerformance(req.user._id, session, finalVerdictSummary);
     await session.save();
     return res.json(await buildSessionPayload(req.user, session));
   }

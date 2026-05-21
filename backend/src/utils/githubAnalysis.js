@@ -677,7 +677,7 @@ const analyzeGithubTarget = async (input) => {
     return [await analyzeSingleRepo(repo, repos)];
   }
 
-  // Profile mode: analyze top 3 repos
+  // Profile mode: analyze top 5 repos sorted by originality, popularity, and recent push dates
   const allRepos = await listUserRepos(owner);
   if (!allRepos || allRepos.length === 0) {
     throw new Error('No public GitHub repositories were found for this profile.');
@@ -686,11 +686,24 @@ const analyzeGithubTarget = async (input) => {
   const topRepos = [...allRepos]
     .filter((r) => !r.archived && !r.disabled)
     .sort((left, right) => {
+      // 1. Prioritize original repos over forks
+      const leftForkPenalty = left.fork ? 1 : 0;
+      const rightForkPenalty = right.fork ? 1 : 0;
+      if (leftForkPenalty !== rightForkPenalty) {
+        return leftForkPenalty - rightForkPenalty;
+      }
+      // 2. Prioritize repositories with stars and forks (popular ones)
+      const leftPopularity = (left.stargazers_count || 0) + (left.forks_count || 0) * 2;
+      const rightPopularity = (right.stargazers_count || 0) + (right.forks_count || 0) * 2;
+      if (leftPopularity !== rightPopularity) {
+        return rightPopularity - leftPopularity;
+      }
+      // 3. Fall back to push date (recent activity)
       const leftPushedAt = new Date(left.pushed_at || 0).getTime();
       const rightPushedAt = new Date(right.pushed_at || 0).getTime();
       return rightPushedAt - leftPushedAt;
     })
-    .slice(0, 3);
+    .slice(0, 5);
 
   const results = [];
   for (const repo of topRepos) {

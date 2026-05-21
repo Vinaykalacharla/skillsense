@@ -74,10 +74,10 @@ const deriveScores = (user) => {
   const leetcodeSignal = Math.min(35, (leetcodeSolved / 10) + (leetcodeRating > 0 ? 10 : 0));
 
   // Coding Score: Base 40 + skills + links + GitHub + LeetCode
-  const coding = clamp(40 + (skillCount * 3) + (linkSignals * 2) + githubBaseSignal + leetcodeSignal, 40, 98);
+  let coding = clamp(40 + (skillCount * 3) + (linkSignals * 2) + githubBaseSignal + leetcodeSignal, 40, 98);
   
   // Communication Score: Base 45 + LinkedIn signals + profile completeness
-  const communication = clamp(
+  let communication = clamp(
     45 + 
     (Number(user.linkedin_skill_count) || 0) * 1.5 + 
     (user.linkedin_headline ? 5 : 0) + 
@@ -86,6 +86,19 @@ const deriveScores = (user) => {
     40, 
     95
   );
+
+  // Blend in mock interview score if available
+  if (typeof user.latest_interview_score === 'number' && user.latest_interview_score > 0) {
+    // 1. Blend communication (interview is a direct indicator, weight 30%)
+    communication = clamp(Math.round(communication * 0.7 + user.latest_interview_score * 0.3), 40, 98);
+
+    // 2. Blend coding (if technical/system_design mode, weight 20%. If mixed mode, weight 10%)
+    const mode = user.latest_interview_mode || 'mixed';
+    const codingWeight = (mode === 'technical' || mode === 'system_design') ? 0.20 : (mode === 'mixed' ? 0.10 : 0);
+    if (codingWeight > 0) {
+      coding = clamp(Math.round(coding * (1 - codingWeight) + user.latest_interview_score * codingWeight), 40, 98);
+    }
+  }
   
   // Authenticity Score: Base 50 + verification + links + GitHub originality
   const authenticity = clamp(

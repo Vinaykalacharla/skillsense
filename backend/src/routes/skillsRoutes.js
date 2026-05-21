@@ -17,6 +17,8 @@ const {
   downloadSkillPassportPdf,
   downloadResume,
   getResumeBuilder,
+  saveResumeBuilder,
+  optimizeResumeText,
   downloadResumeBuilderPdf,
   getRecommendations,
 } = require('../controllers/skillsController');
@@ -46,6 +48,8 @@ router.get('/skill-passport/', protect, getSkillPassport);
 router.get('/skill-passport/pdf/', protect, downloadSkillPassportPdf);
 router.get('/resume/', protect, downloadResume);
 router.get('/resume-builder/', protect, getResumeBuilder);
+router.post('/resume-builder/', protect, saveResumeBuilder);
+router.post('/resume-builder/optimize/', protect, optimizeResumeText);
 router.get('/resume-builder/pdf/', protect, downloadResumeBuilderPdf);
 router.get('/recommendations/', protect, getRecommendations);
 

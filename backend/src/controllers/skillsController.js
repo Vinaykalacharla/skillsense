@@ -1,4 +1,5 @@
 const asyncHandler = require('express-async-handler');
+const { callAi } = require('../utils/aiClient');
 const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
@@ -437,57 +438,623 @@ const downloadResume = asyncHandler(async (req, res) => {
   res.download(absolutePath);
 });
 
-const buildResumePreview = (user) => ({
-  full_name: user.full_name || user.username,
-  headline: user.linkedin_headline || 'Placement-ready engineer',
-  summary: user.linkedin_about || 'Driven engineer with a focus on building reliable systems.',
-  generated_at: new Date().toISOString(),
-  education: buildEducationSnapshot(user),
-  skills: buildVerifiedSkills(user),
-  achievements: [`Placement readiness score ${Math.round(user.scores?.placement_ready || 70)} / 100`],
-  projects: [
+const buildResumePreview = (user) => {
+  const education = buildEducationSnapshot(user);
+  const skills = (user.student_skills || []).map(skill => ({
+    name: skill,
+    category: 'Technical Skills'
+  }));
+  const achievements = [`Placement readiness score ${Math.round(user.scores?.placement_ready || 70)} / 100`].filter(Boolean);
+  const projects = [
     {
       title: 'Smart Portfolio',
-      description: 'Code analysis platform that surfaces engineering insights.',
-      link: user.github_link,
+      description: 'AI code analysis platform built to surface deep engineering insights and metrics.',
+      link: user.github_link || '',
+      technologies: 'Node.js, Express, React, Tailwind CSS'
+    }
+  ];
+  const links = [
+    { label: 'GitHub', url: user.github_link || '' },
+    { label: 'LinkedIn', url: user.linkedin_link || '' }
+  ].filter(link => link.url);
+
+  return {
+    template: 'modern',
+    full_name: user.full_name || user.username,
+    headline: user.linkedin_headline || 'Placement-Ready Software Engineer',
+    summary: user.linkedin_about || 'Driven engineer focused on developing secure, maintainable, and high-performance software applications.',
+    contact: {
+      email: user.email || '',
+      phone: user.phone_number || '',
+      location: user.college || '',
+      linkedin: user.linkedin_link || '',
+      github: user.github_link || '',
+      website: ''
     },
-  ],
-  links: [
-    { label: 'GitHub', url: user.github_link || 'https://github.com' },
-    { label: 'LinkedIn', url: user.linkedin_link || 'https://linkedin.com' },
-  ],
+    education: {
+      college: education.college || '',
+      course: education.course || '',
+      branch: education.branch || '',
+      year_of_study: education.year_of_study || '',
+      cgpa: education.cgpa || ''
+    },
+    experience: [
+      {
+        company: 'SkillSense Prep',
+        role: 'Full Stack Engineer Intern',
+        location: 'Remote',
+        start_date: '01/2026',
+        end_date: 'Present',
+        description: 'Collaborated on developing the core platform; optimized database query profiles and built robust backend routes.'
+      }
+    ],
+    projects,
+    skills,
+    achievements,
+    links
+  };
+};
+
+const saveResumeBuilder = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    res.status(404);
+    throw new Error('User not found');
+  }
+  user.custom_resume = req.body;
+  user.markModified('custom_resume');
+  await user.save();
+  res.json(user.custom_resume);
+});
+
+const optimizeResumeText = asyncHandler(async (req, res) => {
+  const { text, type } = req.body;
+  if (!text || text.trim().length < 5) {
+    res.status(400);
+    throw new Error('Text is too short to optimize');
+  }
+
+  const systemPrompt = `You are a professional resume writer and career coach. Optimize the candidate's input text to be highly professional, impactful, and clear.
+Follow these rules:
+1. Use the STAR method format where appropriate (Situation, Task, Action, Result).
+2. Start bullet points with strong action verbs (e.g., 'Architected', 'Spearheaded', 'Optimized', 'Engineered').
+3. Keep it concise, professional, and clear.
+4. Return a JSON object with a single key "optimized_text" which is the optimized string. Do not include any formatting, code blocks, or markdown backticks outside of the JSON.`;
+
+  const prompt = `Optimize the following text for a resume. Section type: ${type || 'general'}.
+Original Text: "${text}"`;
+
+  try {
+    const response = await callAi(prompt, systemPrompt);
+    if (response && response.optimized_text) {
+      res.json({ optimized_text: response.optimized_text });
+    } else {
+      res.status(500);
+      throw new Error('Invalid AI response structure');
+    }
+  } catch (error) {
+    console.error('AI Resume optimization failed:', error);
+    res.status(500);
+    throw new Error('Failed to optimize text using AI: ' + error.message);
+  }
 });
 
 const downloadResumeBuilderPdf = asyncHandler(async (req, res) => {
-  const preview = buildResumePreview(req.user);
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    res.status(404);
+    throw new Error('User not found');
+  }
+  let resume = user.custom_resume;
+  if (!resume) {
+    resume = buildResumePreview(user);
+  }
+
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', 'attachment; filename="skillsense-resume.pdf"');
+  res.setHeader('Content-Disposition', `attachment; filename="${(resume.full_name || 'resume').replace(/\s+/g, '_')}_resume.pdf"`);
   doc.pipe(res);
-  doc.fontSize(20).text(preview.full_name, { align: 'center' });
-  doc.moveDown();
-  doc.fontSize(12).text(preview.headline, { align: 'center' });
-  doc.moveDown();
-  doc.fontSize(12).text(preview.summary);
-  doc.moveDown();
-  doc.fontSize(14).text('Education');
-  doc.fontSize(12).text(`${preview.education.college}`);
-  doc.text(`${preview.education.course} | ${preview.education.branch} | ${preview.education.year_of_study}`);
-  if (preview.education.cgpa) {
-    doc.text(`CGPA: ${preview.education.cgpa}`);
+
+  const template = resume.template || 'modern';
+
+  if (template === 'minimalist') {
+    doc.font('Times-Bold').fontSize(22).text(resume.full_name || '', { align: 'center' });
+    doc.moveDown(0.2);
+    doc.font('Times-Roman').fontSize(11).text(resume.headline || '', { align: 'center' });
+    
+    doc.moveDown(0.3);
+    const contactParts = [];
+    if (resume.contact?.email) contactParts.push(resume.contact.email);
+    if (resume.contact?.phone) contactParts.push(resume.contact.phone);
+    if (resume.contact?.location) contactParts.push(resume.contact.location);
+    if (resume.contact?.linkedin) contactParts.push('LinkedIn');
+    if (resume.contact?.github) contactParts.push('GitHub');
+    doc.fontSize(9).text(contactParts.join('  |  '), { align: 'center' });
+
+    doc.moveDown(0.5);
+    doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#d1d5db').lineWidth(0.5).stroke();
+    doc.moveDown(0.8);
+
+    if (resume.summary) {
+      doc.font('Times-Bold').fontSize(11).text('PROFESSIONAL SUMMARY');
+      doc.moveTo(40, doc.y + 2).lineTo(555, doc.y + 2).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
+      doc.moveDown(0.4);
+      doc.font('Times-Roman').fontSize(10).text(resume.summary, { align: 'justify', lineGap: 2 });
+      doc.moveDown(1.2);
+    }
+
+    if (resume.education && resume.education.college) {
+      doc.font('Times-Bold').fontSize(11).text('EDUCATION');
+      doc.moveTo(40, doc.y + 2).lineTo(555, doc.y + 2).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
+      doc.moveDown(0.4);
+      doc.font('Times-Bold').fontSize(10).text(resume.education.college);
+      const degreeStr = [resume.education.course, resume.education.branch, resume.education.year_of_study].filter(Boolean).join(', ');
+      doc.font('Times-Roman').fontSize(10).text(degreeStr);
+      if (resume.education.cgpa) {
+        doc.font('Times-Italic').text(`CGPA: ${resume.education.cgpa}`);
+      }
+      doc.moveDown(1.2);
+    }
+
+    if (resume.experience && resume.experience.length > 0) {
+      doc.font('Times-Bold').fontSize(11).text('PROFESSIONAL EXPERIENCE');
+      doc.moveTo(40, doc.y + 2).lineTo(555, doc.y + 2).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
+      doc.moveDown(0.4);
+
+      resume.experience.forEach(exp => {
+        const topY = doc.y;
+        doc.font('Times-Bold').fontSize(10).text(exp.role || '');
+        doc.font('Times-Roman').text(`${exp.company || ''} - ${exp.location || ''}`);
+        
+        const dateStr = `${exp.start_date || ''} - ${exp.end_date || ''}`;
+        doc.font('Times-Italic').fontSize(10).text(dateStr, 400, topY, { align: 'right', width: 155 });
+        
+        doc.x = 40;
+        doc.moveDown(0.2);
+        
+        if (exp.description) {
+          doc.font('Times-Roman').fontSize(10).text(exp.description, { align: 'justify', lineGap: 1.5 });
+        }
+        doc.moveDown(0.8);
+      });
+      doc.moveDown(0.4);
+    }
+
+    if (resume.projects && resume.projects.length > 0) {
+      doc.font('Times-Bold').fontSize(11).text('PROJECTS');
+      doc.moveTo(40, doc.y + 2).lineTo(555, doc.y + 2).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
+      doc.moveDown(0.4);
+
+      resume.projects.forEach(proj => {
+        doc.font('Times-Bold').fontSize(10).text(proj.title || '');
+        if (proj.link) {
+          doc.font('Times-Roman').fontSize(9).fillColor('#2563eb').text(proj.link, { underline: true }).fillColor('#1c1917');
+        }
+        
+        doc.x = 40;
+        doc.moveDown(0.2);
+        if (proj.description) {
+          doc.font('Times-Roman').fontSize(10).text(proj.description, { align: 'justify', lineGap: 1.5 });
+        }
+        if (proj.technologies) {
+          doc.font('Times-Italic').fontSize(9.5).text(`Technologies: ${proj.technologies}`);
+        }
+        doc.moveDown(0.8);
+      });
+      doc.moveDown(0.4);
+    }
+
+    if (resume.skills && resume.skills.length > 0) {
+      doc.font('Times-Bold').fontSize(11).text('TECHNICAL SKILLS');
+      doc.moveTo(40, doc.y + 2).lineTo(555, doc.y + 2).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
+      doc.moveDown(0.4);
+
+      const skillGroups = {};
+      resume.skills.forEach(s => {
+        const category = s.category || 'Other Skills';
+        if (!skillGroups[category]) skillGroups[category] = [];
+        skillGroups[category].push(s.name);
+      });
+
+      Object.entries(skillGroups).forEach(([cat, names]) => {
+        doc.font('Times-Bold').fontSize(10).text(`${cat}: `, { continued: true })
+           .font('Times-Roman').text(names.join(', '));
+        doc.moveDown(0.3);
+      });
+      doc.moveDown(0.8);
+    }
+
+    if (resume.achievements && resume.achievements.length > 0) {
+      doc.font('Times-Bold').fontSize(11).text('ACHIEVEMENTS & HIGHLIGHTS');
+      doc.moveTo(40, doc.y + 2).lineTo(555, doc.y + 2).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
+      doc.moveDown(0.4);
+
+      resume.achievements.forEach(ach => {
+        doc.font('Times-Roman').fontSize(10).text(`• ${ach}`);
+        doc.moveDown(0.2);
+      });
+    }
+
+  } else if (template === 'corporate') {
+    const primaryColor = '#334155';
+    const accentColor = '#0d9488';
+    const textColor = '#374151';
+
+    doc.font('Helvetica-Bold').fontSize(24).fillColor(primaryColor).text(resume.full_name || '');
+    doc.font('Helvetica-Oblique').fontSize(12).fillColor(accentColor).text(resume.headline || '');
+    
+    doc.moveDown(0.3);
+    const details = [];
+    if (resume.contact?.email) details.push(resume.contact.email);
+    if (resume.contact?.phone) details.push(resume.contact.phone);
+    if (resume.contact?.location) details.push(resume.contact.location);
+    doc.font('Helvetica').fontSize(9.5).fillColor(textColor).text(details.join('  |  '));
+    
+    const linksList = [];
+    if (resume.contact?.linkedin) linksList.push(`LinkedIn: ${resume.contact.linkedin}`);
+    if (resume.contact?.github) linksList.push(`GitHub: ${resume.contact.github}`);
+    if (linksList.length > 0) {
+      doc.text(linksList.join('  |  '));
+    }
+
+    doc.moveDown(0.5);
+    doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor(accentColor).lineWidth(1.5).stroke();
+    doc.moveDown(0.8);
+
+    const drawSectionHeader = (title) => {
+      doc.font('Helvetica-Bold').fontSize(12).fillColor(primaryColor).text(title.toUpperCase());
+      doc.moveTo(40, doc.y + 2).lineTo(555, doc.y + 2).strokeColor('#cbd5e1').lineWidth(0.75).stroke();
+      doc.moveDown(0.5);
+    };
+
+    if (resume.summary) {
+      drawSectionHeader('Professional Summary');
+      doc.font('Helvetica').fontSize(10).fillColor(textColor).text(resume.summary, { align: 'justify', lineGap: 2 });
+      doc.moveDown(1.2);
+    }
+
+    if (resume.experience && resume.experience.length > 0) {
+      drawSectionHeader('Experience');
+      resume.experience.forEach(exp => {
+        const topY = doc.y;
+        doc.font('Helvetica-Bold').fontSize(10.5).fillColor(primaryColor).text(exp.role || '');
+        doc.font('Helvetica-Oblique').fontSize(10).fillColor(accentColor).text(`${exp.company || ''} -- ${exp.location || ''}`);
+        
+        const dateStr = `${exp.start_date || ''} - ${exp.end_date || ''}`;
+        doc.font('Helvetica-Bold').fontSize(9.5).fillColor(textColor).text(dateStr, 400, topY, { align: 'right', width: 155 });
+        
+        doc.x = 40;
+        doc.moveDown(0.2);
+        if (exp.description) {
+          doc.font('Helvetica').fontSize(10).fillColor(textColor).text(exp.description, { align: 'justify', lineGap: 1.5 });
+        }
+        doc.moveDown(0.8);
+      });
+      doc.moveDown(0.4);
+    }
+
+    if (resume.projects && resume.projects.length > 0) {
+      drawSectionHeader('Projects');
+      resume.projects.forEach(proj => {
+        doc.font('Helvetica-Bold').fontSize(10.5).fillColor(primaryColor).text(proj.title || '');
+        if (proj.link) {
+          doc.font('Helvetica').fontSize(9).fillColor(accentColor).text(proj.link, { underline: true });
+        }
+        doc.x = 40;
+        doc.moveDown(0.2);
+        if (proj.description) {
+          doc.font('Helvetica').fontSize(10).fillColor(textColor).text(proj.description, { align: 'justify', lineGap: 1.5 });
+        }
+        if (proj.technologies) {
+          doc.font('Helvetica-Oblique').fontSize(9.5).fillColor(accentColor).text(`Technologies: ${proj.technologies}`);
+        }
+        doc.moveDown(0.8);
+      });
+      doc.moveDown(0.4);
+    }
+
+    if (resume.education && resume.education.college) {
+      drawSectionHeader('Education');
+      doc.font('Helvetica-Bold').fontSize(10.5).fillColor(primaryColor).text(resume.education.college);
+      const degreeStr = [resume.education.course, resume.education.branch, resume.education.year_of_study].filter(Boolean).join(', ');
+      doc.font('Helvetica').fontSize(10).fillColor(textColor).text(degreeStr);
+      if (resume.education.cgpa) {
+        doc.font('Helvetica-Oblique').fontSize(10).fillColor(accentColor).text(`CGPA: ${resume.education.cgpa}`);
+      }
+      doc.moveDown(1.2);
+    }
+
+    if (resume.skills && resume.skills.length > 0) {
+      drawSectionHeader('Skills');
+      const skillGroups = {};
+      resume.skills.forEach(s => {
+        const category = s.category || 'Technical Skills';
+        if (!skillGroups[category]) skillGroups[category] = [];
+        skillGroups[category].push(s.name);
+      });
+      Object.entries(skillGroups).forEach(([cat, names]) => {
+        doc.font('Helvetica-Bold').fontSize(10).fillColor(primaryColor).text(`${cat}: `, { continued: true })
+           .font('Helvetica').fillColor(textColor).text(names.join(', '));
+        doc.moveDown(0.3);
+      });
+      doc.moveDown(0.8);
+    }
+
+    if (resume.achievements && resume.achievements.length > 0) {
+      drawSectionHeader('Achievements');
+      resume.achievements.forEach(ach => {
+        doc.font('Helvetica').fontSize(10).fillColor(textColor).text(`• ${ach}`);
+        doc.moveDown(0.2);
+      });
+    }
+
+  } else if (template === 'creative') {
+    const primaryColor = '#111827';
+    const accentColor = '#4f46e5';
+    const textColor = '#374151';
+    const sidebarBg = '#f3f4f6';
+
+    doc.rect(0, 0, 180, 842).fill(sidebarBg);
+
+    doc.fillColor(primaryColor);
+    
+    let currentY = 40;
+    doc.font('Helvetica-Bold').fontSize(12).fillColor(accentColor).text('CONTACT', 30, currentY);
+    currentY += 20;
+
+    doc.font('Helvetica').fontSize(9).fillColor(textColor);
+    if (resume.contact?.email) {
+      doc.text(resume.contact.email, 30, currentY, { width: 130 });
+      currentY += 25;
+    }
+    if (resume.contact?.phone) {
+      doc.text(resume.contact.phone, 30, currentY, { width: 130 });
+      currentY += 18;
+    }
+    if (resume.contact?.location) {
+      doc.text(resume.contact.location, 30, currentY, { width: 130 });
+      currentY += 25;
+    }
+
+    doc.font('Helvetica-Bold').fontSize(12).fillColor(accentColor).text('LINKS', 30, currentY);
+    currentY += 20;
+    doc.font('Helvetica').fontSize(8.5).fillColor(textColor);
+    if (resume.contact?.linkedin) {
+      doc.text(`LinkedIn:\n${resume.contact.linkedin.replace('https://', '')}`, 30, currentY, { width: 130 });
+      currentY += 30;
+    }
+    if (resume.contact?.github) {
+      doc.text(`GitHub:\n${resume.contact.github.replace('https://', '')}`, 30, currentY, { width: 130 });
+      currentY += 30;
+    }
+
+    if (resume.skills && resume.skills.length > 0) {
+      doc.font('Helvetica-Bold').fontSize(12).fillColor(accentColor).text('SKILLS', 30, currentY);
+      currentY += 20;
+
+      const skillGroups = {};
+      resume.skills.forEach(s => {
+        const category = s.category || 'General';
+        if (!skillGroups[category]) skillGroups[category] = [];
+        skillGroups[category].push(s.name);
+      });
+
+      Object.entries(skillGroups).forEach(([cat, names]) => {
+        doc.font('Helvetica-Bold').fontSize(9.5).fillColor(primaryColor).text(cat, 30, currentY, { width: 130 });
+        currentY += 13;
+        doc.font('Helvetica').fontSize(8.5).fillColor(textColor).text(names.join(', '), 30, currentY, { width: 130 });
+        currentY += Math.ceil(names.join(', ').length / 25) * 11 + 10;
+      });
+    }
+
+    doc.font('Helvetica-Bold').fontSize(26).fillColor(primaryColor).text(resume.full_name || '', 200, 40);
+    doc.font('Helvetica-Bold').fontSize(12).fillColor(accentColor).text((resume.headline || '').toUpperCase());
+    doc.moveDown(0.8);
+
+    const drawRightHeader = (title) => {
+      doc.font('Helvetica-Bold').fontSize(12).fillColor(primaryColor).text(title.toUpperCase());
+      doc.moveTo(doc.x, doc.y + 2).lineTo(555, doc.y + 2).strokeColor('#cbd5e1').lineWidth(1).stroke();
+      doc.moveDown(0.5);
+    };
+
+    if (resume.summary) {
+      drawRightHeader('Profile');
+      doc.font('Helvetica').fontSize(10).fillColor(textColor).text(resume.summary, { align: 'justify', lineGap: 1.5 });
+      doc.moveDown(1.2);
+    }
+
+    if (resume.experience && resume.experience.length > 0) {
+      drawRightHeader('Work Experience');
+      resume.experience.forEach(exp => {
+        const topY = doc.y;
+        doc.font('Helvetica-Bold').fontSize(10.5).fillColor(primaryColor).text(exp.role || '', 200, topY);
+        doc.font('Helvetica-Oblique').fontSize(9.5).fillColor(accentColor).text(exp.company || '');
+        
+        const dateStr = `${exp.start_date || ''} - ${exp.end_date || ''}`;
+        doc.font('Helvetica').fontSize(9.5).fillColor(textColor).text(dateStr, 400, topY, { align: 'right', width: 155 });
+        
+        doc.x = 200;
+        doc.moveDown(0.2);
+        if (exp.description) {
+          doc.font('Helvetica').fontSize(9.5).fillColor(textColor).text(exp.description, { align: 'justify', lineGap: 1.5 });
+        }
+        doc.moveDown(0.8);
+      });
+      doc.moveDown(0.4);
+    }
+
+    if (resume.projects && resume.projects.length > 0) {
+      drawRightHeader('Projects');
+      resume.projects.forEach(proj => {
+        const topY = doc.y;
+        doc.font('Helvetica-Bold').fontSize(10.5).fillColor(primaryColor).text(proj.title || '', 200, topY);
+        if (proj.link) {
+          doc.font('Helvetica').fontSize(8.5).fillColor(accentColor).text(proj.link, { underline: true });
+        }
+        doc.x = 200;
+        doc.moveDown(0.2);
+        if (proj.description) {
+          doc.font('Helvetica').fontSize(9.5).fillColor(textColor).text(proj.description, { align: 'justify', lineGap: 1.5 });
+        }
+        if (proj.technologies) {
+          doc.font('Helvetica-Oblique').fontSize(9).fillColor(accentColor).text(`Tech Stack: ${proj.technologies}`);
+        }
+        doc.moveDown(0.8);
+      });
+      doc.moveDown(0.4);
+    }
+
+    if (resume.education && resume.education.college) {
+      drawRightHeader('Education');
+      doc.font('Helvetica-Bold').fontSize(10.5).fillColor(primaryColor).text(resume.education.college, 200, doc.y);
+      const degreeStr = [resume.education.course, resume.education.branch, resume.education.year_of_study].filter(Boolean).join(', ');
+      doc.font('Helvetica').fontSize(9.5).fillColor(textColor).text(degreeStr);
+      if (resume.education.cgpa) {
+        doc.font('Helvetica-Oblique').fontSize(9.5).fillColor(accentColor).text(`CGPA: ${resume.education.cgpa}`);
+      }
+      doc.moveDown(1.2);
+    }
+
+    if (resume.achievements && resume.achievements.length > 0) {
+      drawRightHeader('Achievements');
+      resume.achievements.forEach(ach => {
+        doc.font('Helvetica').fontSize(9.5).fillColor(textColor).text(`• ${ach}`, 200, doc.y);
+        doc.moveDown(0.2);
+      });
+    }
+
+  } else {
+    const primaryColor = '#1e293b';
+    const accentColor = '#3b82f6';
+    const textColor = '#334155';
+
+    doc.rect(40, 40, 515, 6).fill(accentColor);
+    doc.moveDown(1.2);
+
+    doc.font('Helvetica-Bold').fontSize(24).fillColor(primaryColor).text(resume.full_name || '', { align: 'center' });
+    doc.font('Helvetica').fontSize(12).fillColor(accentColor).text(resume.headline || '', { align: 'center' });
+    
+    doc.moveDown(0.4);
+    const contacts = [];
+    if (resume.contact?.email) contacts.push(resume.contact.email);
+    if (resume.contact?.phone) contacts.push(resume.contact.phone);
+    if (resume.contact?.location) contacts.push(resume.contact.location);
+    doc.font('Helvetica').fontSize(9.5).fillColor(textColor).text(contacts.join('  •  '), { align: 'center' });
+
+    const links = [];
+    if (resume.contact?.linkedin) links.push(`LinkedIn: ${resume.contact.linkedin}`);
+    if (resume.contact?.github) links.push(`GitHub: ${resume.contact.github}`);
+    if (links.length > 0) {
+      doc.text(links.join('  •  '), { align: 'center' });
+    }
+
+    doc.moveDown(0.8);
+    
+    const drawModernHeader = (title) => {
+      doc.font('Helvetica-Bold').fontSize(11).fillColor(accentColor).text(title.toUpperCase());
+      doc.moveTo(40, doc.y + 2).lineTo(555, doc.y + 2).strokeColor('#e2e8f0').lineWidth(1).stroke();
+      doc.moveDown(0.5);
+    };
+
+    if (resume.summary) {
+      drawModernHeader('Professional Summary');
+      doc.font('Helvetica').fontSize(10).fillColor(textColor).text(resume.summary, { align: 'justify', lineGap: 1.5 });
+      doc.moveDown(1.2);
+    }
+
+    if (resume.education && resume.education.college) {
+      drawModernHeader('Education');
+      doc.font('Helvetica-Bold').fontSize(10.5).fillColor(primaryColor).text(resume.education.college);
+      const degreeStr = [resume.education.course, resume.education.branch, resume.education.year_of_study].filter(Boolean).join(', ');
+      doc.font('Helvetica').fontSize(10).fillColor(textColor).text(degreeStr);
+      if (resume.education.cgpa) {
+        doc.font('Helvetica-Oblique').fontSize(9.5).fillColor(accentColor).text(`CGPA: ${resume.education.cgpa}`);
+      }
+      doc.moveDown(1.2);
+    }
+
+    if (resume.experience && resume.experience.length > 0) {
+      drawModernHeader('Experience');
+      resume.experience.forEach(exp => {
+        const topY = doc.y;
+        doc.font('Helvetica-Bold').fontSize(10.5).fillColor(primaryColor).text(exp.role || '');
+        doc.font('Helvetica-Bold').fontSize(9.5).fillColor(accentColor).text(exp.company || '');
+        
+        const dateStr = `${exp.start_date || ''} - ${exp.end_date || ''}`;
+        doc.font('Helvetica').fontSize(9.5).fillColor(textColor).text(dateStr, 400, topY, { align: 'right', width: 155 });
+        
+        doc.x = 40;
+        doc.moveDown(0.2);
+        if (exp.description) {
+          doc.font('Helvetica').fontSize(9.5).fillColor(textColor).text(exp.description, { align: 'justify', lineGap: 1.5 });
+        }
+        doc.moveDown(0.8);
+      });
+      doc.moveDown(0.4);
+    }
+
+    if (resume.projects && resume.projects.length > 0) {
+      drawModernHeader('Academic & Personal Projects');
+      resume.projects.forEach(proj => {
+        const topY = doc.y;
+        doc.font('Helvetica-Bold').fontSize(10.5).fillColor(primaryColor).text(proj.title || '');
+        if (proj.link) {
+          doc.font('Helvetica').fontSize(9).fillColor(accentColor).text(proj.link, { underline: true });
+        }
+        doc.x = 40;
+        doc.moveDown(0.2);
+        if (proj.description) {
+          doc.font('Helvetica').fontSize(9.5).fillColor(textColor).text(proj.description, { align: 'justify', lineGap: 1.5 });
+        }
+        if (proj.technologies) {
+          doc.font('Helvetica-Oblique').fontSize(9).fillColor(accentColor).text(`Technologies: ${proj.technologies}`);
+        }
+        doc.moveDown(0.8);
+      });
+      doc.moveDown(0.4);
+    }
+
+    if (resume.skills && resume.skills.length > 0) {
+      drawModernHeader('Technical Skills');
+      const skillGroups = {};
+      resume.skills.forEach(s => {
+        const category = s.category || 'Skills';
+        if (!skillGroups[category]) skillGroups[category] = [];
+        skillGroups[category].push(s.name);
+      });
+      Object.entries(skillGroups).forEach(([cat, names]) => {
+        doc.font('Helvetica-Bold').fontSize(9.5).fillColor(primaryColor).text(`${cat}: `, { continued: true })
+           .font('Helvetica').fillColor(textColor).text(names.join(', '));
+        doc.moveDown(0.3);
+      });
+      doc.moveDown(0.8);
+    }
+
+    if (resume.achievements && resume.achievements.length > 0) {
+      drawModernHeader('Achievements');
+      resume.achievements.forEach(ach => {
+        doc.font('Helvetica').fontSize(9.5).fillColor(textColor).text(`• ${ach}`);
+        doc.moveDown(0.2);
+      });
+    }
   }
-  doc.moveDown();
-  doc.fontSize(14).text('Skills');
-  preview.skills.forEach((skill) => {
-    doc.fontSize(12).text(`${skill.name} (${skill.level})`);
-  });
+
   doc.end();
 });
 
-const getResumeBuilder = (req, res) => {
-  const preview = buildResumePreview(req.user);
-  res.json(preview);
-};
+const getResumeBuilder = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    res.status(404);
+    throw new Error('User not found');
+  }
+  if (!user.custom_resume) {
+    user.custom_resume = buildResumePreview(user);
+    user.markModified('custom_resume');
+    await user.save();
+  }
+  res.json(user.custom_resume);
+});
 
 const getRecommendations = (req, res) => {
   res.json(DEFAULT_RECOMMENDATIONS);
@@ -509,6 +1076,8 @@ module.exports = {
   downloadSkillPassportPdf,
   downloadResume,
   getResumeBuilder,
+  saveResumeBuilder,
+  optimizeResumeText,
   downloadResumeBuilderPdf,
   getRecommendations,
 };
