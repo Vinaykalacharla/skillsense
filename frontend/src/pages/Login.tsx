@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { GraduationCap, Building2, Briefcase, Eye, EyeOff, ArrowLeft, Key } from 'lucide-react';
+import { GraduationCap, Building2, Briefcase, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,30 +14,18 @@ const roleConfigs = {
     title: 'Student Login',
     description: 'Access your skill verification dashboard',
     redirectTo: '/dashboard',
-    defaultCredentials: {
-      email: 'student.anjali@skillsense.local',
-      password: 'Student@123',
-    },
   },
   university: {
     icon: Building2,
     title: 'University Login',
     description: 'Manage student verifications and analytics',
     redirectTo: '/university/dashboard',
-    defaultCredentials: {
-      email: 'university.demo@skillsense.local',
-      password: 'University@123',
-    },
   },
   recruiter: {
     icon: Briefcase,
     title: 'Recruiter Login',
     description: 'Find and verify top talent',
     redirectTo: '/recruiter/dashboard',
-    defaultCredentials: {
-      email: 'recruiter.demo@skillsense.local',
-      password: 'Recruiter@123',
-    },
   },
 };
 
@@ -139,36 +127,6 @@ export default function Login() {
           </CardHeader>
 
           <CardContent>
-            {config.defaultCredentials && (
-              <div className="p-3.5 mb-4 rounded-xl border border-primary/10 bg-primary/5 text-xs text-left relative overflow-hidden group hover:border-primary/20 transition-all duration-300">
-                <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/5 to-accent/0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <span className="font-semibold text-primary inline-flex items-center gap-1">
-                      <Key className="w-3.5 h-3.5" /> Quick Demo Login
-                    </span>
-                    <div className="text-muted-foreground mt-1 space-y-0.5 font-mono">
-                      <div><span className="text-foreground/75 font-semibold">User:</span> {config.defaultCredentials.email}</div>
-                      <div><span className="text-foreground/75 font-semibold">Pass:</span> {config.defaultCredentials.password}</div>
-                    </div>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setFormData({
-                        email: config.defaultCredentials!.email,
-                        password: config.defaultCredentials!.password,
-                      });
-                    }}
-                    className="h-7 text-[10px] px-2.5 bg-background border-primary/20 text-primary hover:bg-primary hover:text-primary-foreground transition-all duration-300 rounded-lg shadow-sm"
-                  >
-                    Autofill
-                  </Button>
-                </div>
-              </div>
-            )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
